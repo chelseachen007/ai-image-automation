@@ -15,21 +15,14 @@ import { useEffect, useState } from "react"
 
 import { Storage } from "@plasmohq/storage"
 
+import { AI_ENGINE_CONFIGS, AIEngineType } from "../src/config/engines"
+import type { AISource } from "../src/config/engines"
+
 const { Title, Text } = Typography
 const { Option } = Select
 
 // 存储实例
 const storage = new Storage()
-
-// AI 请求源类型
-interface AISource {
-  id: string
-  name: string
-  type: "openai" | "claude" | "gemini" | "custom"
-  apiKey: string
-  baseUrl?: string
-  isDefault: boolean
-}
 
 interface SettingsModalProps {
   visible: boolean
@@ -77,7 +70,7 @@ function SettingsModal({ visible, onClose }: SettingsModalProps) {
     const newSource: AISource = {
       id: Date.now().toString(),
       name: "",
-      type: "openai",
+      type: AIEngineType.OPENAI,
       apiKey: "",
       baseUrl: "",
       isDefault: aiSources.length === 0
@@ -116,26 +109,11 @@ function SettingsModal({ visible, onClose }: SettingsModalProps) {
   }
 
   /**
-   * 获取 API 基础 URL 占位符
+   * 获取不同类型API的基础URL占位符
    */
-  const getBaseUrlPlaceholder = (type: string) => {
-    switch (type) {
-      case "openai":
-        return "https://api.openai.com/v1"
-      case "claude":
-        return "https://api.anthropic.com"
-      case "gemini":
-        return "https://generativelanguage.googleapis.com/v1"
-
-      case "云雾":
-        return "https://yunwu.ai/v1/chat/completions"
-      case "apicore":
-        return "https://api.apicore.ai/v1/chat/completions"
-      case "apiyi":
-        return "https://vip.apiyi.com/v1/chat/completions"
-      default:
-        return "自定义 API 基础 URL"
-    }
+  const getBaseUrlPlaceholder = (type: AIEngineType) => {
+    const config = AI_ENGINE_CONFIGS[type]
+    return config?.baseUrl || "输入自定义API地址"
   }
 
   /**
@@ -254,13 +232,15 @@ function SettingsModal({ visible, onClose }: SettingsModalProps) {
                         updateAISource(source.id, "type", value)
                       }
                       style={{ width: "100%" }}>
-                      <Option value="openai">OpenAI</Option>
-                      <Option value="claude">Claude (Anthropic)</Option>
-                      <Option value="gemini">Gemini (Google)</Option>
-                      <Option value="云雾">云雾</Option>
-                      <Option value="apicore">apicore</Option>
-                      <Option value="apiyi">apiyi</Option>
-                      <Option value="custom">自定义</Option>
+                      <Option value={AIEngineType.OPENAI}>OpenAI</Option>
+                      <Option value={AIEngineType.CLAUDE}>
+                        Claude (Anthropic)
+                      </Option>
+                      <Option value={AIEngineType.GEMINI}>Google Gemini</Option>
+                      <Option value={AIEngineType.DOUBAO}>
+                        火山引擎 (豆包)
+                      </Option>
+                      <Option value={AIEngineType.CUSTOM}>自定义</Option>
                     </Select>
                   </Form.Item>
 

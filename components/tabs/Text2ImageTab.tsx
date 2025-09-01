@@ -7,6 +7,8 @@ import type { BatchTask } from '../BatchProcessor'
 import ExcelImporter from '../ExcelImporter'
 import TemplateManager from '../TemplateManager'
 import type { Template } from '../TemplateManager'
+import { apiService } from "../../services/apiService"
+import type { AISource } from "../../services/apiService"
 
 const { Text, Title } = Typography
 const { TextArea } = Input
@@ -25,15 +27,7 @@ interface GeneratedImage {
   progress?: number
 }
 
-// AI请求源类型
-interface AISource {
-  id: string
-  name: string
-  type: 'openai' | 'claude' | 'gemini' | 'custom'
-  apiKey: string
-  baseUrl?: string
-  isDefault: boolean
-}
+// AISource类型已从apiService导入
 
 /**
  * 文生图标签页组件 - 支持多图片生成、展示和批量处理
