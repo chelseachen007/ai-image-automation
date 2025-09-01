@@ -2,6 +2,7 @@ import { Storage } from "@plasmohq/storage"
 import { AIEngineType, EngineConfigManager } from "../src/config/engines"
 import type { AISource } from "../src/config/engines"
 import { DoubaoEngine } from "../src/services/engines/doubaoEngine"
+import { JimengEngine } from "../src/services/engines/jimengEngine"
 
 // 存储实例
 const storage = new Storage()
@@ -121,8 +122,10 @@ class APIService {
     switch (aiSource.type) {
       case AIEngineType.DOUBAO:
         return new DoubaoEngine(aiSource)
+      case AIEngineType.JIMENG:
+        return new JimengEngine(aiSource)
       default:
-        return null // 使用原有的HTTP请求方式
+        return null
     }
   }
 
@@ -399,7 +402,17 @@ class APIService {
     }
 
     try {
-      // 模拟图片生成
+      // 使用即梦引擎生成图片
+      if (source.type === AIEngineType.JIMENG) {
+        const engine = new JimengEngine(source)
+        const imageUrls = await engine.generateImages(params.prompt, {
+          count: params.count,
+          size: params.size
+        })
+        return { success: true, data: imageUrls }
+      }
+      
+      // 其他引擎的图片生成逻辑（暂时保留模拟）
       await new Promise(resolve => setTimeout(resolve, 2000))
       const mockUrls: string[] = []
       for (let i = 0; i < params.count; i++) {
@@ -423,7 +436,24 @@ class APIService {
     }
 
     try {
-      // 模拟视频生成
+      // 使用即梦引擎生成视频
+      if (source.type === AIEngineType.JIMENG) {
+        const engine = new JimengEngine(source)
+        const videoUrls = await engine.generateVideos(params.prompt, {
+          sourceImageUrl: params.sourceImageUrl,
+          duration: params.duration,
+          count: params.count
+        })
+        
+        const videos = videoUrls.map((url, index) => ({
+          url,
+          thumbnailUrl: params.sourceImageUrl || `https://picsum.photos/320/240?random=${Date.now() + index}`
+        }))
+        
+        return { success: true, data: videos }
+      }
+      
+      // 其他引擎的视频生成逻辑（暂时保留模拟）
       await new Promise(resolve => setTimeout(resolve, 5000 + Math.random() * 10000))
       
       const mockVideos: Array<{ url: string; thumbnailUrl: string }> = []

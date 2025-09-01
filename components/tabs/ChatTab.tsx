@@ -3,7 +3,7 @@ import { Input, Button, Space, Typography, Card, Avatar, Spin, message } from "a
 import { SendOutlined, UserOutlined, RobotOutlined } from "@ant-design/icons"
 import { Storage } from "@plasmohq/storage"
 import { apiService } from "../../services/apiService"
-import type { AISource } from "../../services/apiService"
+import type { AISource } from "../../src/config/engines"
 
 const { Text } = Typography
 const { TextArea } = Input
@@ -140,6 +140,20 @@ function ChatTab() {
   // 组件挂载时加载AI请求源
   useEffect(() => {
     loadDefaultAISource()
+    
+    // 监听存储变化，当AI源配置更新时自动刷新
+    const handleStorageChange = {
+      ai_sources: () => {
+        loadDefaultAISource()
+      }
+    }
+    
+    storage.watch(handleStorageChange)
+    
+    // 清理监听器
+    return () => {
+      storage.unwatch(handleStorageChange)
+    }
   }, [])
 
   // 自动滚动到底部

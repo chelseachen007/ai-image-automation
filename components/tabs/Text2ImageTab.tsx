@@ -8,7 +8,7 @@ import ExcelImporter from '../ExcelImporter'
 import TemplateManager from '../TemplateManager'
 import type { Template } from '../TemplateManager'
 import { apiService } from "../../services/apiService"
-import type { AISource } from "../../services/apiService"
+import type { AISource } from "../../src/config/engines"
 
 const { Text, Title } = Typography
 const { TextArea } = Input
@@ -67,20 +67,21 @@ function Text2ImageTab() {
   }
 
   /**
-   * 模拟图片生成API调用
+   * 调用图片生成API
    */
-  const simulateImageGeneration = async (prompt: string, count: number): Promise<string[]> => {
-    // 模拟生成延迟
-    await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 3000))
+  const generateImagesAPI = async (prompt: string, count: number, size: string = '1:1'): Promise<string[]> => {
+    const response = await apiService.generateImages({
+      prompt,
+      count,
+      size,
+      style: 'default'
+    }, currentAISource)
     
-    // 返回模拟图片URL（使用Picsum作为占位图）
-    const imageUrls: string[] = []
-    for (let i = 0; i < count; i++) {
-      const randomId = Math.floor(Math.random() * 1000) + 100
-      imageUrls.push(`https://picsum.photos/512/512?random=${randomId}`)
+    if (!response.success) {
+      throw new Error(response.error || '图片生成失败')
     }
     
-    return imageUrls
+    return response.data || []
   }
 
   /**
@@ -129,7 +130,7 @@ function Text2ImageTab() {
       }, 500)
 
       // 调用生成API
-      const imageUrls = await simulateImageGeneration(prompt.trim(), imageCount)
+      const imageUrls = await generateImagesAPI(prompt.trim(), imageCount, imageSize)
       
       clearInterval(progressInterval)
 
@@ -242,7 +243,7 @@ function Text2ImageTab() {
       // 模拟API调用延迟
       await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 3000))
       
-      const imageUrls = await simulateImageGeneration(item.prompt, item.count || 1)
+      const imageUrls = await generateImagesAPI(item.prompt, item.count || 1, item.size || '1:1')
       
       return {
         prompt: item.prompt,
@@ -330,6 +331,20 @@ function Text2ImageTab() {
   // 组件挂载时加载AI请求源
   useEffect(() => {
     loadDefaultAISource()
+    
+    // 监听存储变化，当AI源配置更新时自动刷新
+    const handleStorageChange = {
+      ai_sources: () => {
+        loadDefaultAISource()
+      }
+    }
+    
+    storage.watch(handleStorageChange)
+    
+    // 清理监听器
+    return () => {
+      storage.unwatch(handleStorageChange)
+    }
   }, [])
 
   return (

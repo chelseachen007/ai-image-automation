@@ -9,7 +9,7 @@ import ExcelImporter from '../ExcelImporter'
 import TemplateManager from '../TemplateManager'
 import type { Template } from '../TemplateManager'
 import { apiService } from "../../services/apiService"
-import type { AISource } from "../../services/apiService"
+import type { AISource } from "../../src/config/engines"
 
 const { Text, Title } = Typography
 const { TextArea } = Input
@@ -73,27 +73,34 @@ function Image2VideoTab() {
   }
 
   /**
-   * 模拟视频生成API调用
+   * 调用视频生成API
    */
-  const simulateVideoGeneration = async (prompt: string, imageUrl: string, count: number): Promise<GeneratedVideo[]> => {
-    // 模拟生成延迟（视频生成通常需要更长时间）
-    await new Promise(resolve => setTimeout(resolve, 5000 + Math.random() * 10000))
+  const generateVideosAPI = async (prompt: string, imageUrl: string, count: number): Promise<GeneratedVideo[]> => {
+    const response = await apiService.generateVideos({
+      prompt,
+      sourceImageUrl: imageUrl,
+      count,
+      duration: videoDuration,
+      style: 'default'
+    }, currentAISource)
     
-    // 返回模拟视频数据
+    if (!response.success) {
+      throw new Error(response.error || '视频生成失败')
+    }
+    
     const videos: GeneratedVideo[] = []
-    for (let i = 0; i < count; i++) {
-      const randomId = Math.floor(Math.random() * 1000) + 100
+    response.data?.forEach((video, i) => {
       videos.push({
         id: `${Date.now()}_${i}`,
-        url: `https://sample-videos.com/zip/10/mp4/SampleVideo_360x240_1mb.mp4`, // 示例视频
-        thumbnailUrl: `https://picsum.photos/320/240?random=${randomId}`,
+        url: video.url,
+        thumbnailUrl: video.thumbnailUrl,
         prompt: prompt,
         sourceImageUrl: imageUrl,
         timestamp: Date.now(),
         status: 'completed',
         duration: videoDuration
       })
-    }
+    })
     
     return videos
   }
@@ -170,7 +177,7 @@ function Image2VideoTab() {
       }, 1000)
 
       // 调用生成API
-      const generatedVideos = await simulateVideoGeneration(prompt.trim(), sourceImageUrl, videoCount)
+      const generatedVideos = await generateVideosAPI(prompt.trim(), sourceImageUrl, videoCount)
       
       clearInterval(progressInterval)
 
@@ -299,7 +306,7 @@ function Image2VideoTab() {
       }
 
       // 模拟视频生成过程
-      const videos = await simulateVideoGeneration(prompt, imageUrl, count || 1)
+      const videos = await generateVideosAPI(prompt, imageUrl, count || 1)
       
       return {
         success: true,
@@ -388,6 +395,20 @@ function Image2VideoTab() {
   // 组件挂载时加载AI请求源
   useEffect(() => {
     loadDefaultAISource()
+    
+    // 监听存储变化，当AI源配置更新时自动刷新
+    const handleStorageChange = {
+      ai_sources: () => {
+        loadDefaultAISource()
+      }
+    }
+    
+    storage.watch(handleStorageChange)
+    
+    // 清理监听器
+    return () => {
+      storage.unwatch(handleStorageChange)
+    }
   }, [])
 
   return (
