@@ -3,6 +3,9 @@
  * 统一管理所有支持的AI引擎配置
  */
 
+import { modelManager } from './models'
+import type { ModelInfo, ModelCapabilities } from './models'
+
 // AI引擎类型枚举
 export enum AIEngineType {
   OPENAI = "openai",
@@ -390,6 +393,85 @@ export class EngineConfigManager {
   ): AIEngineModel | null {
     const models = this.getEngineModels(type, modelType)
     return models.length > 0 ? models[0] : null
+  }
+
+  /**
+   * 获取详细的模型信息（从模型管理器）
+   */
+  static getDetailedModelInfo(modelId: string): ModelInfo | undefined {
+    return modelManager.getModelById(modelId)
+  }
+
+  /**
+   * 获取平台的所有详细模型信息
+   */
+  static getDetailedModelsByPlatform(platform: string): ModelInfo[] {
+    return modelManager.getModelsByPlatform(platform)
+  }
+
+  /**
+   * 根据能力获取模型列表
+   */
+  static getModelsByCapability(capability: keyof ModelCapabilities, value: boolean = true): ModelInfo[] {
+    return modelManager.getModelsByCapability(capability, value)
+  }
+
+  /**
+   * 获取支持图片生成的模型
+   */
+  static getImageGenerationModels(): ModelInfo[] {
+    return modelManager.getImageGenerationModels()
+  }
+
+  /**
+   * 获取支持视频生成的模型
+   */
+  static getVideoGenerationModels(): ModelInfo[] {
+    return modelManager.getVideoGenerationModels()
+  }
+
+  /**
+   * 获取支持图片输入的模型
+   */
+  static getImageInputModels(): ModelInfo[] {
+    return modelManager.getImageInputModels()
+  }
+
+  /**
+   * 检查模型是否支持特定功能
+   */
+  static checkModelCapability(modelId: string, capability: keyof ModelCapabilities): boolean {
+    return modelManager.checkModelCapability(modelId, capability)
+  }
+
+  /**
+   * 获取所有平台列表
+   */
+  static getAllPlatforms(): string[] {
+    return modelManager.getPlatforms()
+  }
+
+  /**
+   * 根据引擎类型映射到平台名称
+   */
+  static mapEngineTypeToPlatform(type: AIEngineType): string {
+    const mapping: Record<AIEngineType, string> = {
+      [AIEngineType.OPENAI]: 'OpenAI',
+      [AIEngineType.CLAUDE]: 'Claude',
+      [AIEngineType.GEMINI]: 'Gemini',
+      [AIEngineType.DOUBAO]: 'Doubao',
+      [AIEngineType.JIMENG]: 'Jimeng',
+      [AIEngineType.CUSTOM]: 'Custom'
+    }
+    return mapping[type] || 'Custom'
+  }
+
+  /**
+   * 获取引擎类型对应的详细模型列表
+   */
+  static getEngineDetailedModels(type: AIEngineType): ModelInfo[] {
+    const platform = this.mapEngineTypeToPlatform(type)
+    return this.getDetailedModelsByPlatform(platform)
   }
 }
 

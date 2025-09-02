@@ -1,6 +1,8 @@
 import { Storage } from "@plasmohq/storage"
 import { AIEngineType, EngineConfigManager } from "../src/config/engines"
 import type { AISource } from "../src/config/engines"
+import { modelManager } from "../src/config/models"
+import type { ModelInfo } from "../src/config/models"
 import { DoubaoEngine } from "../src/services/engines/doubaoEngine"
 import { JimengEngine } from "../src/services/engines/jimengEngine"
 
@@ -75,6 +77,117 @@ export interface BatchResult<T> {
 class APIService {
   private batchQueues: Map<string, BatchTaskItem[]> = new Map()
   private processingQueues: Map<string, Set<string>> = new Map()
+
+  /**
+   * 获取所有可用模型
+   */
+  getAllModels(): ModelInfo[] {
+    return modelManager.getAllModels()
+  }
+
+  /**
+   * 根据平台获取模型
+   */
+  getModelsByPlatform(platform: string): ModelInfo[] {
+    return modelManager.getModelsByPlatform(platform)
+  }
+
+  /**
+   * 根据ID获取模型信息
+   */
+  getModelById(id: string): ModelInfo | undefined {
+    return modelManager.getModelById(id)
+  }
+
+  /**
+   * 获取支持图片生成的模型
+   */
+  getImageGenerationModels(): ModelInfo[] {
+    return modelManager.getImageGenerationModels()
+  }
+
+  /**
+   * 获取支持视频生成的模型
+   */
+  getVideoGenerationModels(): ModelInfo[] {
+    return modelManager.getVideoGenerationModels()
+  }
+
+  /**
+   * 获取支持图片输入的模型
+   */
+  getImageInputModels(): ModelInfo[] {
+    return modelManager.getImageInputModels()
+  }
+
+  /**
+   * 检查模型是否支持特定功能
+   */
+  checkModelCapability(modelId: string, capability: keyof ModelInfo['capabilities']): boolean {
+    return modelManager.checkModelCapability(modelId, capability)
+  }
+
+  /**
+   * 根据AI源获取推荐的模型
+   */
+  getRecommendedModels(aiSource: AISource, capability?: keyof ModelInfo['capabilities']): ModelInfo[] {
+    const platform = EngineConfigManager.mapEngineTypeToPlatform(aiSource.type)
+    const platformModels = this.getModelsByPlatform(platform)
+    
+    if (capability) {
+      return platformModels.filter(model => model.capabilities[capability])
+    }
+    
+    return platformModels
+  }
+
+  /**
+   * 智能选择最佳模型
+   */
+  selectBestModel(aiSource: AISource, task: 'chat' | 'image' | 'video'): ModelInfo | null {
+    const platform = EngineConfigManager.mapEngineTypeToPlatform(aiSource.type)
+    const platformModels = this.getModelsByPlatform(platform)
+    
+    switch (task) {
+      case 'chat':
+        return platformModels.find(model => 
+          !model.capabilities.canGenerateImages && 
+          !model.capabilities.canGenerateVideos
+        ) || platformModels[0] || null
+      
+      case 'image':
+        return platformModels.find(model => 
+          model.capabilities.canGenerateImages
+        ) || null
+      
+      case 'video':
+        return platformModels.find(model => 
+          model.capabilities.canGenerateVideos
+        ) || null
+      
+      default:
+        return platformModels[0] || null
+    }
+  }
+
+  /**
+   * 验证模型是否支持当前任务
+   */
+  validateModelForTask(modelId: string, task: 'chat' | 'image' | 'video'): boolean {
+    const model = this.getModelById(modelId)
+    if (!model) return false
+    
+    switch (task) {
+      case 'chat':
+        return true // 所有模型都支持基本对话
+      case 'image':
+        return model.capabilities.canGenerateImages
+      case 'video':
+        return model.capabilities.canGenerateVideos
+      default:
+        return false
+    }
+  }
 
   /**
    * 获取默认AI请求源
@@ -394,11 +507,26 @@ class APIService {
   // 其他方法保持不变...
   async generateImages(
     params: ImageGenerationParams,
-    aiSource?: AISource
+    aiSource?: AISource,
+    modelId?: string
   ): Promise<APIResponse<string[]>> {
     const source = aiSource || await this.getDefaultAISource()
     if (!source) {
       return { success: false, error: '未找到可用的AI请求源' }
+    }
+
+    // 验证模型能力
+    if (modelId) {
+      if (!this.validateModelForTask(modelId, 'image')) {
+        return { success: false, error: `模型 ${modelId} 不支持图片生成功能` }
+      }
+    } else {
+      // 自动选择最佳模型
+      const bestModel = this.selectBestModel(source, 'image')
+      if (!bestModel) {
+        return { success: false, error: '当前AI源不支持图片生成功能' }
+      }
+      modelId = bestModel.id
     }
 
     try {
@@ -407,19 +535,14 @@ class APIService {
         const engine = new JimengEngine(source)
         const imageUrls = await engine.generateImages(params.prompt, {
           count: params.count,
-          size: params.size
+          size: params.size,
+          modelId
         })
         return { success: true, data: imageUrls }
       }
       
-      // 其他引擎的图片生成逻辑（暂时保留模拟）
-      await new Promise(resolve => setTimeout(resolve, 2000))
-      const mockUrls: string[] = []
-      for (let i = 0; i < params.count; i++) {
-        const randomId = Math.floor(Math.random() * 1000) + 100
-        mockUrls.push(`https://picsum.photos/512/512?random=${randomId}`)
-      }
-      return { success: true, data: mockUrls }
+      // 不支持的引擎类型，直接抛出错误
+      throw new Error(`AI源类型 ${source.type} 暂不支持图片生成功能，请配置支持图片生成的AI源（如即梦）`)
     } catch (error) {
       console.error('图片生成API调用失败:', error)
       return { success: false, error: error instanceof Error ? error.message : '未知错误' }
@@ -428,11 +551,26 @@ class APIService {
 
   async generateVideos(
     params: VideoGenerationParams,
-    aiSource?: AISource
+    aiSource?: AISource,
+    modelId?: string
   ): Promise<APIResponse<Array<{ url: string; thumbnailUrl: string }>>> {
     const source = aiSource || await this.getDefaultAISource()
     if (!source) {
       return { success: false, error: '未找到可用的AI请求源' }
+    }
+
+    // 验证模型能力
+    if (modelId) {
+      if (!this.validateModelForTask(modelId, 'video')) {
+        return { success: false, error: `模型 ${modelId} 不支持视频生成功能` }
+      }
+    } else {
+      // 自动选择最佳模型
+      const bestModel = this.selectBestModel(source, 'video')
+      if (!bestModel) {
+        return { success: false, error: '当前AI源不支持视频生成功能' }
+      }
+      modelId = bestModel.id
     }
 
     try {
@@ -442,7 +580,8 @@ class APIService {
         const videoUrls = await engine.generateVideos(params.prompt, {
           sourceImageUrl: params.sourceImageUrl,
           duration: params.duration,
-          count: params.count
+          count: params.count,
+          modelId
         })
         
         const videos = videoUrls.map((url, index) => ({
@@ -453,19 +592,8 @@ class APIService {
         return { success: true, data: videos }
       }
       
-      // 其他引擎的视频生成逻辑（暂时保留模拟）
-      await new Promise(resolve => setTimeout(resolve, 5000 + Math.random() * 10000))
-      
-      const mockVideos: Array<{ url: string; thumbnailUrl: string }> = []
-      for (let i = 0; i < params.count; i++) {
-        const randomId = Math.floor(Math.random() * 1000) + 100
-        mockVideos.push({
-          url: `https://sample-videos.com/zip/10/mp4/SampleVideo_360x240_1mb.mp4`,
-          thumbnailUrl: `https://picsum.photos/320/240?random=${randomId}`
-        })
-      }
-      
-      return { success: true, data: mockVideos }
+      // 不支持的引擎类型，直接抛出错误
+      throw new Error(`AI源类型 ${source.type} 暂不支持视频生成功能，请配置支持视频生成的AI源（如即梦）`)
     } catch (error) {
       console.error('视频生成API调用失败:', error)
       return { success: false, error: error instanceof Error ? error.message : '未知错误' }
