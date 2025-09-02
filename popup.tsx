@@ -1,16 +1,15 @@
 import { useState } from "react"
-import { Drawer, FloatButton, Input, Button, Space, Typography, Tag, Divider } from "antd"
-import { PlusOutlined, CloseOutlined, SettingOutlined, ClearOutlined, SyncOutlined } from "@ant-design/icons"
-
-const { Title, Text } = Typography
+import { Drawer, FloatButton, Button } from "antd"
+import { PlusOutlined, CloseOutlined, SettingOutlined } from "@ant-design/icons"
+import { useUI } from "./src/hooks"
+import TabsContainer from "./components/TabsContainer"
 
 /**
- * 主弹窗组件 - 使用 Ant Design 实现悬浮球点击展示抽屉功能
+ * 主弹窗组件 - 使用新的架构
  */
 function IndexPopup() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
-  const [prefixPrompt, setPrefixPrompt] = useState("")
-  const [suffixPrompt, setSuffixPrompt] = useState("")
+  const { toggleSettings } = useUI()
 
   /**
    * 切换抽屉显示状态
@@ -26,25 +25,9 @@ function IndexPopup() {
     setIsDrawerOpen(false)
   }
 
-  /**
-   * 清空所有输入
-   */
-  const handleClear = () => {
-    setPrefixPrompt("")
-    setSuffixPrompt("")
-  }
-
-  /**
-   * 处理变更操作
-   */
-  const handleChange = () => {
-    // TODO: 实现变更逻辑
-    console.log("变更操作，前缀:", prefixPrompt, "后缀:", suffixPrompt)
-  }
-
   return (
     <>
-      {/* Ant Design 悬浮球 - 常态显示在页面右侧 */}
+      {/* Ant Design 悬浮球 */}
       <FloatButton
         icon={isDrawerOpen ? <CloseOutlined /> : <PlusOutlined />}
         onClick={toggleDrawer}
@@ -61,89 +44,35 @@ function IndexPopup() {
         type="primary"
       />
 
-      {/* Ant Design 抽屉组件 */}
+      {/* 主抽屉组件 */}
       <Drawer
-        title={
-          <Title level={4} style={{ margin: 0 }}>
-            AI 图片生成
-          </Title>
-        }
+        title="AI 自动化工具"
         placement="right"
-        width={400}
+        width={600}
         onClose={closeDrawer}
         open={isDrawerOpen}
         closeIcon={<CloseOutlined />}
         styles={{
-          body: { padding: "24px" }
+          body: { padding: 0, height: '100%' }
         }}
       >
-        <Space direction="vertical" size="large" style={{ width: "100%" }}>
-          {/* 提示词前缀 */}
-          <div>
-            <Text strong style={{ display: "block", marginBottom: 8 }}>
-              提示词前缀
-            </Text>
-            <Input
-              placeholder="如 Romanticism, cinematic lighting, 输入 @ 使用变量"
-              value={prefixPrompt}
-              onChange={(e) => setPrefixPrompt(e.target.value)}
-              size="large"
-            />
+        <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+          {/* 主内容区域 */}
+          <div style={{ flex: 1, overflow: 'hidden' }}>
+            <TabsContainer />
           </div>
-
-          {/* 提示词后缀 */}
-          <div>
-            <Text strong style={{ display: "block", marginBottom: 8 }}>
-              提示词后缀
-            </Text>
-            <Input
-              placeholder="如 high details, UHD, 输入 @ 使用变量"
-              value={suffixPrompt}
-              onChange={(e) => setSuffixPrompt(e.target.value)}
-              size="large"
-            />
-          </div>
-
-          {/* 图词匹配 */}
-          <div>
-            <Text strong style={{ display: "block", marginBottom: 8 }}>
-              图词匹配
-            </Text>
-            <Space>
-              <Tag color="blue" style={{ padding: "4px 12px", borderRadius: 16 }}>
-                智能参考
-              </Tag>
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                参考强度: 默认
-              </Text>
-            </Space>
-          </div>
-
-          <Divider />
-
-          {/* 操作按钮 */}
-          <Space style={{ width: "100%", justifyContent: "space-between" }}>
-            <Button
-              icon={<ClearOutlined />}
-              onClick={handleClear}
-              style={{ flex: 1 }}
+          
+          {/* 底部设置按钮 */}
+          <div style={{ padding: '16px', borderTop: '1px solid #f0f0f0' }}>
+            <Button 
+              icon={<SettingOutlined />} 
+              onClick={toggleSettings}
+              block
             >
-              清空
+              设置
             </Button>
-            <Button
-              type="primary"
-              icon={<SyncOutlined />}
-              onClick={handleChange}
-              style={{ flex: 1, marginLeft: 8 }}
-            >
-              变更
-            </Button>
-            <Button
-              icon={<SettingOutlined />}
-              style={{ marginLeft: 8 }}
-            />
-          </Space>
-        </Space>
+          </div>
+        </div>
       </Drawer>
     </>
   )

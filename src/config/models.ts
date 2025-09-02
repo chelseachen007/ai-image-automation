@@ -49,9 +49,26 @@ export interface PlatformModels {
 // OpenAI平台模型配置
 const openaiModels: ModelInfo[] = [
   {
+    id: 'gpt-5',
+    name: 'GPT-5',
+    description: '最新一代GPT模型，增强的推理和多模态能力',
+    platform: 'OpenAI',
+    capabilities: {
+      supportsImageInput: true,
+      canGenerateImages: false,
+      canGenerateVideos: false,
+      supportsStreaming: true,
+      supportsBatch: true,
+      maxInputTokens: 200000,
+      maxOutputTokens: 8192
+    },
+    isCustom: false,
+    version: '2025-01-01'
+  },
+  {
     id: 'gpt-4o',
     name: 'GPT-4o',
-    description: '最新的GPT-4模型，支持多模态输入',
+    description: '优化的GPT-4模型，支持多模态输入',
     platform: 'OpenAI',
     capabilities: {
       supportsImageInput: true,
@@ -83,40 +100,43 @@ const openaiModels: ModelInfo[] = [
     version: '2024-07-18'
   },
   {
-    id: 'gpt-3.5-turbo',
-    name: 'GPT-3.5 Turbo',
-    description: '经典的GPT-3.5模型',
+    id: 'sora',
+    name: 'Sora',
+    description: 'OpenAI视频生成模型，文本生成高质量视频',
     platform: 'OpenAI',
     capabilities: {
-      supportsImageInput: false,
+      supportsImageInput: true,
       canGenerateImages: false,
-      canGenerateVideos: false,
-      supportsStreaming: true,
+      canGenerateVideos: true,
+      supportsStreaming: false,
       supportsBatch: true,
-      maxInputTokens: 16385,
-      maxOutputTokens: 4096
+      maxVideoLength: 60, // 秒
+      videoResolution: '1080p'
     },
     isCustom: false,
-    version: '0125'
+    version: '2025-02-01'
   },
   {
-    id: 'dall-e-3',
-    name: 'DALL-E 3',
-    description: '最新的图像生成模型',
+    id: 'dall-e-4',
+    name: 'DALL-E 4',
+    description: '最新一代图像生成模型，更高的质量和理解力',
     platform: 'OpenAI',
     capabilities: {
       supportsImageInput: false,
       canGenerateImages: true,
       canGenerateVideos: false,
       supportsStreaming: false,
-      supportsBatch: false
+      supportsBatch: true,
+      maxImageSize: '2048x2048',
+      imageQuality: 'ultra'
     },
-    isCustom: false
+    isCustom: false,
+    version: '2025-01-15'
   },
   {
-    id: 'dall-e-2',
-    name: 'DALL-E 2',
-    description: '经典的图像生成模型',
+    id: 'dall-e-3',
+    name: 'DALL-E 3',
+    description: '高性能图像生成模型',
     platform: 'OpenAI',
     capabilities: {
       supportsImageInput: false,
@@ -129,8 +149,155 @@ const openaiModels: ModelInfo[] = [
   }
 ];
 
+// Anthropic Claude模型配置
+const claudeModels: ModelInfo[] = [
+  {
+    id: 'claude-4',
+    name: 'Claude 4',
+    description: '最新一代Claude模型，增强的推理和编码能力',
+    platform: 'Anthropic',
+    capabilities: {
+      supportsImageInput: true,
+      canGenerateImages: false,
+      canGenerateVideos: false,
+      supportsStreaming: true,
+      supportsBatch: true,
+      maxInputTokens: 200000,
+      maxOutputTokens: 8192
+    },
+    isCustom: false,
+    version: '2025-01-01'
+  },
+  {
+    id: 'claude-3.5-sonnet',
+    name: 'Claude 3.5 Sonnet',
+    description: '高性能Claude 3.5模型，平衡的性能和成本',
+    platform: 'Anthropic',
+    capabilities: {
+      supportsImageInput: true,
+      canGenerateImages: false,
+      canGenerateVideos: false,
+      supportsStreaming: true,
+      supportsBatch: true,
+      maxInputTokens: 200000,
+      maxOutputTokens: 4096
+    },
+    isCustom: false,
+    version: '2024-06-20'
+  },
+  {
+    id: 'claude-3.5-haiku',
+    name: 'Claude 3.5 Haiku',
+    description: '快速响应的Claude模型，适合实时应用',
+    platform: 'Anthropic',
+    capabilities: {
+      supportsImageInput: true,
+      canGenerateImages: false,
+      canGenerateVideos: false,
+      supportsStreaming: true,
+      supportsBatch: true,
+      maxInputTokens: 100000,
+      maxOutputTokens: 4096
+    },
+    isCustom: false,
+    version: '2024-06-20'
+  }
+];
+
+// Google Gemini模型配置
+const geminiModels: ModelInfo[] = [
+  {
+    id: 'gemini-2.0',
+    name: 'Gemini 2.0',
+    description: '最新一代Gemini模型，实时多模态处理',
+    platform: 'Google',
+    capabilities: {
+      supportsImageInput: true,
+      canGenerateImages: true,
+      canGenerateVideos: true,
+      supportsStreaming: true,
+      supportsBatch: true,
+      maxInputTokens: 1000000,
+      maxOutputTokens: 8192,
+      supportsRealTime: true,
+      supportsAudioInput: true,
+      supportsVideoInput: true
+    },
+    isCustom: false,
+    version: '2025-01-01'
+  },
+  {
+    id: 'gemini-1.5-pro',
+    name: 'Gemini 1.5 Pro',
+    description: '高性能Gemini模型，支持长上下文',
+    platform: 'Google',
+    capabilities: {
+      supportsImageInput: true,
+      canGenerateImages: true,
+      canGenerateVideos: false,
+      supportsStreaming: true,
+      supportsBatch: true,
+      maxInputTokens: 1000000,
+      maxOutputTokens: 8192
+    },
+    isCustom: false,
+    version: '2024-05-14'
+  },
+  {
+    id: 'gemini-1.5-flash',
+    name: 'Gemini 1.5 Flash',
+    description: '快速响应的Gemini模型',
+    platform: 'Google',
+    capabilities: {
+      supportsImageInput: true,
+      canGenerateImages: true,
+      canGenerateVideos: false,
+      supportsStreaming: true,
+      supportsBatch: true,
+      maxInputTokens: 1000000,
+      maxOutputTokens: 8192
+    },
+    isCustom: false,
+    version: '2024-05-14'
+  },
+  {
+    id: 'imagen-3',
+    name: 'Imagen 3',
+    description: 'Google最新图像生成模型',
+    platform: 'Google',
+    capabilities: {
+      supportsImageInput: false,
+      canGenerateImages: true,
+      canGenerateVideos: false,
+      supportsStreaming: false,
+      supportsBatch: true,
+      maxImageSize: '2048x2048',
+      imageQuality: 'ultra'
+    },
+    isCustom: false,
+    version: '2025-01-15'
+  }
+];
+
 // 火山引擎(豆包)模型配置
 const doubaoModels: ModelInfo[] = [
+  {
+    id: 'doubao-pro-128k',
+    name: '豆包 Pro 128K',
+    description: '火山引擎豆包专业版模型，支持长上下文',
+    platform: 'Doubao',
+    capabilities: {
+      supportsImageInput: true,
+      canGenerateImages: false,
+      canGenerateVideos: false,
+      supportsStreaming: true,
+      supportsBatch: true,
+      maxInputTokens: 128000,
+      maxOutputTokens: 8192
+    },
+    isCustom: false,
+    version: '2025-01-01'
+  },
   {
     id: 'doubao-pro-4k',
     name: '豆包 Pro 4K',
@@ -148,20 +315,92 @@ const doubaoModels: ModelInfo[] = [
     isCustom: false
   },
   {
-    id: 'doubao-lite-4k',
-    name: '豆包 Lite 4K',
+    id: 'doubao-lite-32k',
+    name: '豆包 Lite 32K',
     description: '火山引擎豆包轻量版模型',
     platform: 'Doubao',
     capabilities: {
-      supportsImageInput: false,
+      supportsImageInput: true,
       canGenerateImages: false,
       canGenerateVideos: false,
       supportsStreaming: true,
       supportsBatch: true,
-      maxInputTokens: 4096,
+      maxInputTokens: 32000,
       maxOutputTokens: 4096
     },
-    isCustom: false
+    isCustom: false,
+    version: '2025-01-01'
+  }
+];
+
+// 其他开源模型配置
+const openSourceModels: ModelInfo[] = [
+  {
+    id: 'stable-diffusion-3',
+    name: 'Stable Diffusion 3',
+    description: '开源图像生成模型',
+    platform: 'StabilityAI',
+    capabilities: {
+      supportsImageInput: false,
+      canGenerateImages: true,
+      canGenerateVideos: false,
+      supportsStreaming: false,
+      supportsBatch: true,
+      maxImageSize: '2048x2048'
+    },
+    isCustom: false,
+    version: '3.0'
+  },
+  {
+    id: 'midjourney-v7',
+    name: 'Midjourney V7',
+    description: '最新版Midjourney图像生成模型',
+    platform: 'Midjourney',
+    capabilities: {
+      supportsImageInput: false,
+      canGenerateImages: true,
+      canGenerateVideos: false,
+      supportsStreaming: false,
+      supportsBatch: true,
+      maxImageSize: '2048x2048',
+      imageQuality: 'ultra'
+    },
+    isCustom: false,
+    version: '7.0'
+  },
+  {
+    id: 'runway-gen-3',
+    name: 'Runway Gen-3',
+    description: 'Runway最新视频生成模型',
+    platform: 'Runway',
+    capabilities: {
+      supportsImageInput: true,
+      canGenerateImages: false,
+      canGenerateVideos: true,
+      supportsStreaming: false,
+      supportsBatch: true,
+      maxVideoLength: 16,
+      videoResolution: '1080p'
+    },
+    isCustom: false,
+    version: '3.0'
+  },
+  {
+    id: 'pika-2.0',
+    name: 'Pika 2.0',
+    description: 'Pika最新视频生成模型',
+    platform: 'Pika',
+    capabilities: {
+      supportsImageInput: true,
+      canGenerateImages: false,
+      canGenerateVideos: true,
+      supportsStreaming: false,
+      supportsBatch: true,
+      maxVideoLength: 10,
+      videoResolution: '720p'
+    },
+    isCustom: false,
+    version: '2.0'
   }
 ];
 
@@ -210,8 +449,14 @@ const customModelCapabilities: ModelCapabilities = {
 // 所有平台模型配置
 export const platformModels: PlatformModels = {
   OpenAI: openaiModels,
+  Anthropic: claudeModels,
+  Google: geminiModels,
   Doubao: doubaoModels,
-  Jimeng: jimengModels
+  Jimeng: jimengModels,
+  StabilityAI: openSourceModels.filter(m => m.platform === 'StabilityAI'),
+  Midjourney: openSourceModels.filter(m => m.platform === 'Midjourney'),
+  Runway: openSourceModels.filter(m => m.platform === 'Runway'),
+  Pika: openSourceModels.filter(m => m.platform === 'Pika')
 };
 
 // 模型管理类
@@ -367,7 +612,12 @@ export const modelManager = ModelManager.getInstance();
 
 // 导出默认模型ID
 export const DEFAULT_MODELS = {
-  CHAT: 'gpt-4o-mini',
-  IMAGE_GENERATION: 'jimeng-text2image-3.0',
-  VIDEO_GENERATION: 'jimeng-image2video'
+  CHAT: 'gpt-5',
+  IMAGE_GENERATION: 'dall-e-4',
+  VIDEO_GENERATION: 'jimeng-image2video',
+  ALTERNATIVES: {
+    CHAT: ['claude-4', 'gemini-2.0', 'gpt-4o'],
+    IMAGE_GENERATION: ['imagen-3', 'midjourney-v7', 'jimeng-text2image-3.0'],
+    VIDEO_GENERATION: ['runway-gen-3', 'pika-2.0', 'jimeng-image2video']
+  }
 };

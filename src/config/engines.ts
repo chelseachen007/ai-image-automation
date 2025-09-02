@@ -71,17 +71,36 @@ export const AI_ENGINE_CONFIGS: Record<AIEngineType, AIEngineConfig> = {
     apiKeyName: "Authorization",
     models: [
       {
-        id: "gpt-4",
-        name: "GPT-4",
+        id: "gpt-5",
+        name: "GPT-5",
         type: "text",
         maxTokens: 8192,
         supportsBatch: true
       },
       {
-        id: "gpt-3.5-turbo",
-        name: "GPT-3.5 Turbo",
-        type: "text",
+        id: "gpt-4o",
+        name: "GPT-4o",
+        type: "multimodal",
         maxTokens: 4096,
+        supportsBatch: true
+      },
+      {
+        id: "gpt-4o-mini",
+        name: "GPT-4o Mini",
+        type: "multimodal",
+        maxTokens: 16384,
+        supportsBatch: true
+      },
+      {
+        id: "sora",
+        name: "Sora",
+        type: "video",
+        supportsBatch: true
+      },
+      {
+        id: "dall-e-4",
+        name: "DALL-E 4",
+        type: "image",
         supportsBatch: true
       },
       {
@@ -89,18 +108,12 @@ export const AI_ENGINE_CONFIGS: Record<AIEngineType, AIEngineConfig> = {
         name: "DALL-E 3",
         type: "image",
         supportsBatch: false
-      },
-      {
-        id: "gpt-4-vision-preview",
-        name: "GPT-4 Vision",
-        type: "multimodal",
-        maxTokens: 4096,
-        supportsBatch: true
       }
     ],
     supportedFeatures: [
       AIEngineFeature.TEXT_GENERATION,
       AIEngineFeature.IMAGE_GENERATION,
+      AIEngineFeature.VIDEO_GENERATION,
       AIEngineFeature.CHAT,
       AIEngineFeature.BATCH_PROCESSING
     ],
@@ -121,22 +134,22 @@ export const AI_ENGINE_CONFIGS: Record<AIEngineType, AIEngineConfig> = {
     apiKeyName: "x-api-key",
     models: [
       {
-        id: "claude-3-opus-20240229",
-        name: "Claude 3 Opus",
+        id: "claude-4",
+        name: "Claude 4",
+        type: "text",
+        maxTokens: 8192,
+        supportsBatch: true
+      },
+      {
+        id: "claude-3-5-sonnet-20240620",
+        name: "Claude 3.5 Sonnet",
         type: "text",
         maxTokens: 4096,
         supportsBatch: true
       },
       {
-        id: "claude-3-sonnet-20240229",
-        name: "Claude 3 Sonnet",
-        type: "text",
-        maxTokens: 4096,
-        supportsBatch: true
-      },
-      {
-        id: "claude-3-haiku-20240307",
-        name: "Claude 3 Haiku",
+        id: "claude-3-5-haiku-20240620",
+        name: "Claude 3.5 Haiku",
         type: "text",
         maxTokens: 4096,
         supportsBatch: true
@@ -165,22 +178,36 @@ export const AI_ENGINE_CONFIGS: Record<AIEngineType, AIEngineConfig> = {
     apiKeyName: "key",
     models: [
       {
-        id: "gemini-pro",
-        name: "Gemini Pro",
-        type: "text",
-        maxTokens: 32768,
+        id: "gemini-2.0",
+        name: "Gemini 2.0",
+        type: "multimodal",
+        maxTokens: 8192,
         supportsBatch: true
       },
       {
-        id: "gemini-pro-vision",
-        name: "Gemini Pro Vision",
+        id: "gemini-1.5-pro",
+        name: "Gemini 1.5 Pro",
         type: "multimodal",
-        maxTokens: 16384,
+        maxTokens: 8192,
+        supportsBatch: true
+      },
+      {
+        id: "gemini-1.5-flash",
+        name: "Gemini 1.5 Flash",
+        type: "multimodal",
+        maxTokens: 8192,
+        supportsBatch: true
+      },
+      {
+        id: "imagen-3",
+        name: "Imagen 3",
+        type: "image",
         supportsBatch: true
       }
     ],
     supportedFeatures: [
       AIEngineFeature.TEXT_GENERATION,
+      AIEngineFeature.IMAGE_GENERATION,
       AIEngineFeature.CHAT,
       AIEngineFeature.BATCH_PROCESSING
     ],

@@ -541,12 +541,103 @@ class APIService {
         return { success: true, data: imageUrls }
       }
       
-      // 不支持的引擎类型，直接抛出错误
-      throw new Error(`AI源类型 ${source.type} 暂不支持图片生成功能，请配置支持图片生成的AI源（如即梦）`)
+      // 使用OpenAI DALL-E生成图片
+      if (source.type === AIEngineType.OPENAI || source.type === AIEngineType.CUSTOM) {
+        const url = this.buildAPIUrl(source, '/images/generations')
+        const headers = this.buildHeaders(source)
+        
+        const requestBody: any = {
+          model: modelId || 'dall-e-3',
+          prompt: params.prompt,
+          n: Math.min(params.count, 10), // DALL-E最多10张
+          size: this.convertToDalleSize(params.size),
+          quality: params.style === 'vivid' ? 'hd' : 'standard'
+        }
+        
+        // 如果是dall-e-3，支持style参数
+        if (modelId?.includes('dall-e-3')) {
+          requestBody.style = params.style === 'natural' ? 'natural' : 'vivid'
+        }
+        
+        const response = await fetch(url, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(requestBody)
+        })
+        
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.error?.message || `API请求失败: ${response.statusText}`)
+        }
+        
+        const data = await response.json()
+        const imageUrls = data.data.map((item: any) => item.url)
+        
+        return { success: true, data: imageUrls }
+      }
+      
+      // 使用Google Gemini生成图片
+      if (source.type === AIEngineType.GEMINI) {
+        // Gemini的图片生成API需要不同的端点
+        const model = this.getModelById(modelId)
+        if (model?.id.includes('imagen')) {
+          const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateImage?key=${source.apiKey}`
+          
+          const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              prompt: params.prompt,
+              count: params.count,
+              size: this.convertToGeminiSize(params.size)
+            })
+          })
+          
+          if (!response.ok) {
+            const errorData = await response.json()
+            throw new Error(errorData.error?.message || `Gemini API请求失败: ${response.statusText}`)
+          }
+          
+          const data = await response.json()
+          const imageUrls = data.generatedImages?.map((item: any) => item.image) || []
+          
+          return { success: true, data: imageUrls }
+        }
+      }
+      
+      // 不支持的引擎类型
+      throw new Error(`AI源类型 ${source.type} 暂不支持图片生成功能，请配置支持图片生成的AI源（如OpenAI DALL-E、即梦等）`)
     } catch (error) {
       console.error('图片生成API调用失败:', error)
       return { success: false, error: error instanceof Error ? error.message : '未知错误' }
     }
+  }
+  
+  /**
+   * 转换尺寸为DALL-E支持的格式
+   */
+  private convertToDalleSize(size: string): string {
+    const sizeMap: Record<string, string> = {
+      '256x256': '256x256',
+      '512x512': '512x512',
+      '1024x1024': '1024x1024',
+      '1024x1792': '1792x1024',
+      '1792x1024': '1792x1024'
+    }
+    return sizeMap[size] || '1024x1024'
+  }
+  
+  /**
+   * 转换尺寸为Gemini支持的格式
+   */
+  private convertToGeminiSize(size: string): string {
+    const sizeMap: Record<string, string> = {
+      '512x512': '512x512',
+      '1024x1024': '1024x1024',
+      '1152x896': '1024x1024',
+      '896x1152': '1024x1024'
+    }
+    return sizeMap[size] || '1024x1024'
   }
 
   async generateVideos(

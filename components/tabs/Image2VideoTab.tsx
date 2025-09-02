@@ -7,8 +7,16 @@ import {
   ReloadOutlined,
   SettingOutlined,
   UploadOutlined,
-  UserOutlined,
-  VideoCameraOutlined
+  VideoCameraOutlined,
+  EyeOutlined,
+  EditOutlined,
+  CopyOutlined,
+  SaveOutlined,
+  HistoryOutlined,
+  ClockCircleOutlined,
+  HdOutlined,
+  ApiOutlined,
+  ThunderboltOutlined
 } from "@ant-design/icons"
 import {
   Button,
@@ -25,32 +33,29 @@ import {
   Space,
   Tabs,
   Typography,
-  Upload
+  Tag,
+  Tooltip,
+  Slider,
+  Switch,
+  Upload,
+  Divider,
+  Rate
 } from "antd"
 import type { UploadFile } from "antd/es/upload/interface"
-import { useEffect, useState } from "react"
+import { useState, useEffect, useRef } from "react"
 
-import { Storage } from "@plasmohq/storage"
-
+import { useAISources, useUI, useModelManager } from "../../src/hooks"
+import { modelManager, DEFAULT_MODELS } from "../../src/config/models"
+import { EngineConfigManager } from "../../src/config/engines"
+import { cacheManager } from "../../src/utils/cache"
 import { apiService } from "../../services/apiService"
-import type { AISource } from "../../src/config/engines"
-import type { ModelInfo } from "../../src/config/models"
-import { useModelManager } from "../../src/hooks/useModelManager"
-import BatchProcessor, {
-  BatchTaskStatus,
-  BatchTaskType
-} from "../BatchProcessor"
-import type { BatchTask } from "../BatchProcessor"
+import BatchProcessor from "../BatchProcessor"
 import ExcelImporter from "../ExcelImporter"
 import TemplateManager from "../TemplateManager"
-import type { Template } from "../TemplateManager"
 
 const { Text, Title } = Typography
 const { TextArea } = Input
 const { Option } = Select
-
-// 存储实例
-const storage = new Storage()
 
 // 生成的视频类型
 interface GeneratedVideo {
@@ -63,137 +68,120 @@ interface GeneratedVideo {
   status: "generating" | "completed" | "failed"
   progress?: number
   duration?: number
+  model?: string
+  resolution?: string
+  fps?: number
+  quality?: string
+  motionIntensity?: number
+  cameraMovement?: string
+  style?: string
+  seed?: string
 }
 
-// AISource类型已从apiService导入
+// 高级视频参数
+interface VideoParams {
+  motionIntensity: number
+  cameraMovement: string
+  fps: number
+  quality: string
+  seed: string
+  negativePrompt: string
+  enableUpscale: boolean
+  upscaleModel: string
+  aspectRatio: string
+}
 
 /**
- * 图生视频标签页组件 - 支持多视频生成和展示
+ * 图生视频标签页组件 - 支持最新AI模型和高级功能
  */
 function Image2VideoTab() {
+  const { currentSource } = useAISources()
+  const { platform } = useUI()
+  const { getVideoGenerationModels } = useModelManager()
+  
+  // 基础状态
   const [prompt, setPrompt] = useState("")
   const [videos, setVideos] = useState<GeneratedVideo[]>([])
   const [isGenerating, setIsGenerating] = useState(false)
-  const [currentAISource, setCurrentAISource] = useState<AISource | null>(null)
-  const [selectedModel, setSelectedModel] = useState<string | undefined>(
-    undefined
-  )
-  const [availableModels, setAvailableModels] = useState<ModelInfo[]>([])
-  const [videoCount, setVideoCount] = useState(1)
+  
+  // 模型和生成设置
+  const [selectedModel, setSelectedModel] = useState(DEFAULT_MODELS.VIDEO_GENERATION)
   const [videoDuration, setVideoDuration] = useState(5)
-  const [videoStyle, setVideoStyle] = useState("realistic")
+  const [videoStyle, setVideoStyle] = useState("cinematic")
+  const [videoResolution, setVideoResolution] = useState("1080p")
+  const [videoCount, setVideoCount] = useState(1)
+  
+  // 高级参数
+  const [advancedParams, setAdvancedParams] = useState<VideoParams>({
+    motionIntensity: 5,
+    cameraMovement: "static",
+    fps: 24,
+    quality: "standard",
+    seed: "",
+    negativePrompt: "",
+    enableUpscale: false,
+    upscaleModel: "R-ESRGAN 4x+",
+    aspectRatio: "16:9"
+  })
+  
+  // 源图片
   const [sourceImage, setSourceImage] = useState<UploadFile | null>(null)
   const [sourceImageUrl, setSourceImageUrl] = useState<string>("")
-
-  // 使用模型管理hook
-  const { getVideoGenerationModels, getModelsByPlatform } = useModelManager()
-
+  
   // 批量处理相关状态
   const [activeTab, setActiveTab] = useState("single")
-  const [batchTasks, setBatchTasks] = useState<BatchTask[]>([])
+  const [batchTasks, setBatchTasks] = useState<any[]>([])
   const [isImportModalVisible, setIsImportModalVisible] = useState(false)
   const [isTemplateModalVisible, setIsTemplateModalVisible] = useState(false)
-  const [batchConfig, setBatchConfig] = useState({
-    maxConcurrent: 2,
-    retryCount: 2,
-    retryDelay: 1000,
-    autoStart: false
-  })
-
-  /**
-   * 加载默认AI请求源和可用模型
-   */
-  const loadDefaultAISource = async () => {
-    try {
-      const sources = ((await storage.get("ai_sources")) as AISource[]) || []
-      const defaultSource =
-        sources.find((source) => source.isDefault) || sources[0]
-      setCurrentAISource(defaultSource || null)
-
-      // 加载视频生成模型
-      if (defaultSource) {
-        // 根据AI源类型获取对应平台的模型
-        const platformMap: Record<string, string> = {
-          openai: "OpenAI",
-          doubao: "Doubao",
-          jimeng: "Jimeng",
-          custom: "Custom" // 自定义平台可以使用所有模型
-        }
-
-        const platformName = platformMap[defaultSource.type]
-        if (platformName) {
-          const platformModels = getModelsByPlatform(platformName)
-          // 只获取支持视频生成的模型
-          const videoModels = platformModels.filter(
-            (model) => model.capabilities.canGenerateVideos
-          )
-          setAvailableModels(videoModels)
-
-          // 设置默认选中的模型
-          if (videoModels.length > 0 && !selectedModel) {
-            setSelectedModel(videoModels[0].id)
-          }
-        } else {
-          setAvailableModels([])
-          setSelectedModel(undefined)
-        }
-      } else {
-        setAvailableModels([])
-        setSelectedModel(undefined)
-      }
-    } catch (error) {
-      console.error("加载AI请求源失败:", error)
-    }
-  }
-
-  /**
-   * 调用视频生成API
-   */
-  const generateVideosAPI = async (
-    prompt: string,
-    imageUrl: string,
-    count: number
-  ): Promise<GeneratedVideo[]> => {
-    const response = await apiService.generateVideos(
-      {
-        prompt,
-        sourceImageUrl: imageUrl,
-        count,
-        duration: videoDuration,
-        style: "default"
-      },
-      currentAISource,
-      selectedModel
-    )
-
-    if (!response.success) {
-      throw new Error(response.error || "视频生成失败")
-    }
-
-    const videos: GeneratedVideo[] = []
-    response.data?.forEach((video, i) => {
-      videos.push({
-        id: `${Date.now()}_${i}`,
-        url: video.url,
-        thumbnailUrl: video.thumbnailUrl,
-        prompt: prompt,
-        sourceImageUrl: imageUrl,
-        timestamp: Date.now(),
-        status: "completed",
-        duration: videoDuration
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  
+  // 历史记录
+  const [showHistory, setShowHistory] = useState(false)
+  const [generationHistory, setGenerationHistory] = useState<any[]>([])
+  
+  // 获取可用的视频生成模型（根据当前AI源过滤）
+  const videoModels = currentSource 
+    ? getVideoGenerationModels().filter(model => {
+        const platform = EngineConfigManager.mapEngineTypeToPlatform(currentSource.type)
+        return model.platform === platform
       })
-    })
-
-    return videos
+    : getVideoGenerationModels()
+  
+  // 缓存常用设置
+  useEffect(() => {
+    const cachedSettings = cacheManager.get('video-gen-settings')
+    if (cachedSettings) {
+      setVideoDuration(cachedSettings.duration || 5)
+      setVideoStyle(cachedSettings.style || "cinematic")
+      setVideoResolution(cachedSettings.resolution || "1080p")
+    }
+  }, [])
+  
+  // 当AI源改变时，自动选择可用的视频模型
+  useEffect(() => {
+    if (currentSource && videoModels.length > 0) {
+      // 检查当前选择的模型是否在可用模型列表中
+      const currentModelAvailable = videoModels.some(model => model.id === selectedModel)
+      if (!currentModelAvailable) {
+        // 选择第一个可用模型
+        setSelectedModel(videoModels[0].id)
+      }
+    }
+  }, [currentSource, videoModels])
+  
+  // 保存设置到缓存
+  const saveSettings = () => {
+    cacheManager.set('video-gen-settings', {
+      duration: videoDuration,
+      style: videoStyle,
+      resolution: videoResolution
+    }, 300000) // 5分钟缓存
   }
-
-  /**
-   * 处理图片上传
-   */
+  
+  // 处理图片上传
   const handleImageUpload = (file: UploadFile) => {
     setSourceImage(file)
-
-    // 创建预览URL
+    
     if (file.originFileObj) {
       const reader = new FileReader()
       reader.onload = (e) => {
@@ -201,755 +189,743 @@ function Image2VideoTab() {
       }
       reader.readAsDataURL(file.originFileObj)
     }
-
-    return false // 阻止自动上传
+    
+    return false
   }
-
-  /**
-   * 生成视频
-   */
-  const handleGenerateVideos = async () => {
-    if (!prompt.trim()) {
-      message.warning("请输入视频描述")
+  
+  // 生成视频
+  const handleGenerate = async () => {
+    if (!prompt.trim() && !sourceImageUrl) {
+      message.warning("请输入提示词或上传图片")
       return
     }
-
-    if (!sourceImageUrl) {
-      message.warning("请上传源图片")
+    
+    if (!currentSource) {
+      message.warning("请先在设置中配置AI源")
       return
     }
-
-    if (!currentAISource) {
-      message.error("请先配置AI请求源")
-      return
-    }
-
+    
     setIsGenerating(true)
-
-    // 创建生成中的视频占位符
-    const newVideos: GeneratedVideo[] = []
-    for (let i = 0; i < videoCount; i++) {
-      newVideos.push({
-        id: `${Date.now()}_${i}`,
-        url: "",
-        thumbnailUrl: sourceImageUrl,
-        prompt: prompt.trim(),
-        sourceImageUrl: sourceImageUrl,
-        timestamp: Date.now(),
-        status: "generating",
-        progress: 0,
-        duration: videoDuration
-      })
-    }
-
-    setVideos((prev) => [...newVideos, ...prev])
-
+    saveSettings()
+    
     try {
-      // 模拟进度更新（视频生成进度较慢）
-      const progressInterval = setInterval(() => {
-        setVideos((prev) =>
-          prev.map((video) => {
-            if (
-              newVideos.some((newVideo) => newVideo.id === video.id) &&
-              video.status === "generating"
-            ) {
-              const newProgress = Math.min(
-                (video.progress || 0) + Math.random() * 5,
-                90
-              )
-              return { ...video, progress: newProgress }
-            }
-            return video
-          })
-        )
-      }, 1000)
-
-      // 调用生成API
-      const generatedVideos = await generateVideosAPI(
-        prompt.trim(),
-        sourceImageUrl,
-        videoCount
-      )
-
-      clearInterval(progressInterval)
-
-      // 更新视频状态
-      setVideos((prev) =>
-        prev.map((video) => {
-          const index = newVideos.findIndex(
-            (newVideo) => newVideo.id === video.id
+      // 创建生成任务
+      const newVideos: GeneratedVideo[] = []
+      for (let i = 0; i < videoCount; i++) {
+        const newVideo: GeneratedVideo = {
+          id: `video_${Date.now()}_${i}`,
+          url: "",
+          thumbnailUrl: "",
+          prompt: prompt.trim(),
+          sourceImageUrl,
+          timestamp: Date.now(),
+          status: "generating",
+          progress: 0,
+          duration: videoDuration,
+          model: selectedModel,
+          resolution: videoResolution,
+          fps: advancedParams.fps,
+          quality: advancedParams.quality,
+          motionIntensity: advancedParams.motionIntensity,
+          cameraMovement: advancedParams.cameraMovement,
+          style: videoStyle,
+          seed: advancedParams.seed || Math.random().toString(36).substr(2, 9)
+        }
+        newVideos.push(newVideo)
+      }
+      
+      setVideos(prev => [...newVideos, ...prev])
+      
+      // 调用真实的API生成视频
+      for (let i = 0; i < newVideos.length; i++) {
+        const newVideo = newVideos[i]
+        
+        try {
+          // 先更新状态为生成中
+          setVideos(prev => prev.map(video => 
+            video.id === newVideo.id 
+              ? { ...video, progress: 10 }
+              : video
+          ))
+          
+          // 调用API生成视频
+          const result = await apiService.generateVideos(
+            {
+              prompt: prompt.trim(),
+              sourceImageUrl: sourceImageUrl,
+              count: 1, // 每次调用生成一个视频
+              duration: videoDuration,
+              style: videoStyle
+            },
+            currentSource,
+            selectedModel
           )
-          if (index !== -1 && index < generatedVideos.length) {
-            return {
-              ...video,
-              ...generatedVideos[index],
-              progress: 100
-            }
+          
+          if (result.success && result.data) {
+            // 更新视频状态为完成
+            setVideos(prev => prev.map(video => 
+              video.id === newVideo.id 
+                ? { 
+                    ...video, 
+                    status: "completed",
+                    progress: 100,
+                    url: result.data![0].url,
+                    thumbnailUrl: result.data![0].thumbnailUrl
+                  }
+                : video
+            ))
+          } else {
+            // 生成失败
+            setVideos(prev => prev.map(video => 
+              video.id === newVideo.id 
+                ? { ...video, status: "failed", progress: 0 }
+                : video
+            ))
+            message.error(`视频 ${i + 1} 生成失败: ${result.error}`)
           }
-          return video
-        })
-      )
-
-      message.success(`成功生成 ${generatedVideos.length} 个视频`)
+        } catch (error) {
+          console.error(`视频 ${i + 1} 生成失败:`, error)
+          setVideos(prev => prev.map(video => 
+            video.id === newVideo.id 
+              ? { ...video, status: "failed", progress: 0 }
+              : video
+          ))
+          message.error(`视频 ${i + 1} 生成失败，请重试`)
+        }
+      }
+      
+      // 添加到历史记录
+      const historyItem = {
+        id: Date.now().toString(),
+        prompt: prompt.trim(),
+        model: selectedModel,
+        hasSourceImage: !!sourceImageUrl,
+        params: { 
+          videoDuration, 
+          videoStyle, 
+          videoResolution, 
+          videoCount,
+          ...advancedParams 
+        },
+        timestamp: Date.now(),
+        videoCount
+      }
+      setGenerationHistory(prev => [historyItem, ...prev.slice(0, 49)])
+      
+      message.success(`正在生成 ${videoCount} 个视频...`)
     } catch (error) {
-      console.error("生成视频失败:", error)
-      message.error("生成视频失败，请重试")
-
-      // 标记失败的视频
-      setVideos((prev) =>
-        prev.map((video) => {
-          if (newVideos.some((newVideo) => newVideo.id === video.id)) {
-            return { ...video, status: "failed" as const }
-          }
-          return video
-        })
-      )
+      console.error("生成失败:", error)
+      message.error("生成失败，请重试")
     } finally {
       setIsGenerating(false)
     }
   }
-
-  /**
-   * 删除视频
-   */
-  const handleDeleteVideo = (videoId: string) => {
-    setVideos((prev) => prev.filter((video) => video.id !== videoId))
-  }
-
-  /**
-   * 下载视频
-   */
-  const handleDownloadVideo = async (videoUrl: string, prompt: string) => {
+  
+  // 下载视频
+  const handleDownload = async (video: GeneratedVideo) => {
+    if (!video.url) return
+    
     try {
-      const link = document.createElement("a")
-      link.href = videoUrl
-      link.download = `generated_video_${Date.now()}.mp4`
-      link.target = "_blank"
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      message.success("视频下载开始")
+      if (platform.native?.filesystem?.saveFile) {
+        await platform.native.filesystem.saveFile(
+          video.url,
+          `video_${video.id}.mp4`
+        )
+      } else {
+        // 浏览器环境下载
+        const link = document.createElement('a')
+        link.href = video.url
+        link.download = `video_${video.prompt.slice(0, 20)}_${video.id}.mp4`
+        link.click()
+      }
+      message.success("视频下载成功")
     } catch (error) {
-      console.error("下载视频失败:", error)
-      message.error("下载视频失败")
+      console.error("下载失败:", error)
+      message.error("下载失败")
     }
   }
-
-  /**
-   * 重新生成视频
-   */
-  const handleRegenerateVideo = (videoPrompt: string, imageUrl?: string) => {
-    setPrompt(videoPrompt)
-    if (imageUrl) {
-      setSourceImageUrl(imageUrl)
-    }
+  
+  // 复制提示词
+  const copyPrompt = (promptText: string) => {
+    navigator.clipboard.writeText(promptText)
+    message.success("提示词已复制")
   }
-
-  /**
-   * 清空所有视频
-   */
-  const handleClearVideos = () => {
-    setVideos([])
+  
+  // 使用历史记录
+  const useHistoryItem = (item: any) => {
+    setPrompt(item.prompt)
+    setSelectedModel(item.model)
+    setVideoDuration(item.params.videoDuration)
+    setVideoStyle(item.params.videoStyle)
+    setVideoResolution(item.params.videoResolution)
+    setVideoCount(item.params.videoCount)
+    setAdvancedParams(item.params)
+    setShowHistory(false)
   }
-
-  /**
-   * 播放视频
-   */
-  const handlePlayVideo = (videoUrl: string) => {
-    window.open(videoUrl, "_blank")
-  }
-
-  /**
-   * 创建批量视频生成任务
-   */
-  const createBatchTask = (data: any[], template?: Template) => {
-    const tasks: BatchTask[] = data.map((item, index) => ({
-      id: `video_task_${Date.now()}_${index}`,
-      name: `视频生成任务 ${index + 1}`,
-      type: BatchTaskType.IMAGE_TO_VIDEO,
-      status: BatchTaskStatus.PENDING,
-      data: [
-        {
-          prompt: item.prompt || item.description || "",
-          imageUrl: item.imageUrl || item.image || "",
-          duration: videoDuration,
-          style: videoStyle,
-          count: 1
-        }
-      ],
-      progress: 0,
-      totalItems: 1,
-      completedItems: 0,
-      failedItems: 0,
-      results: [],
-      createdAt: new Date(),
-      updatedAt: new Date()
+  
+  // 导出视频信息
+  const exportVideoInfo = () => {
+    const videoData = videos.map(video => ({
+      prompt: video.prompt,
+      model: video.model,
+      duration: video.duration,
+      resolution: video.resolution,
+      fps: video.fps,
+      style: video.style,
+      motionIntensity: video.motionIntensity,
+      cameraMovement: video.cameraMovement,
+      seed: video.seed,
+      timestamp: new Date(video.timestamp).toISOString()
     }))
-
-    setBatchTasks((prev) => [...prev, ...tasks])
-    message.success(`已创建 ${tasks.length} 个批量视频生成任务`)
+    
+    const blob = new Blob([JSON.stringify(videoData, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `video_generation_${Date.now()}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    
+    message.success("视频信息已导出")
   }
-
-  /**
-   * 处理单个批量视频生成项
-   */
-  const processBatchVideoItem = async (
-    taskType: BatchTaskType,
-    item: any,
-    taskId: string
-  ): Promise<any> => {
-    try {
-      const { prompt, imageUrl, duration, style, count } = item
-
-      if (!prompt || !imageUrl) {
-        throw new Error("缺少必要的视频生成参数")
-      }
-
-      // 模拟视频生成过程
-      const videos = await generateVideosAPI(prompt, imageUrl, count || 1)
-
-      return {
-        success: true,
-        result: {
-          videos,
-          prompt,
-          imageUrl,
-          generatedAt: Date.now()
-        }
-      }
-    } catch (error) {
-      console.error("批量视频生成失败:", error)
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : "视频生成失败"
-      }
-    }
-  }
-
-  /**
-   * 处理Excel导入完成
-   */
-  const handleImportComplete = (data: any[], config: any) => {
-    console.log("导入的数据:", data)
-    console.log("导入配置:", config)
-
-    createBatchTask(data)
-    setIsImportModalVisible(false)
-    setActiveTab("batch")
-    message.success(`成功导入 ${data.length} 条数据`)
-  }
-
-  /**
-   * 处理模板应用
-   */
-  const handleTemplateApply = (template: Template) => {
-    console.log("应用模板:", template)
-
-    // 应用模板配置到当前设置（如果模板有配置）
-    // 这里简化处理，直接使用当前设置
-
-    // 如果有批量数据，创建批量任务
-    // 这里简化处理，暂时不处理模板数据
-    // if (template.data && template.data.length > 0) {
-    //   createBatchTask(template.data, template)
-    //   setActiveTab('batch')
-    // }
-
-    setIsTemplateModalVisible(false)
-    message.success(`已应用模板: ${template.name}`)
-  }
-
-  /**
-   * 更新批量任务
-   */
-  const handleTaskUpdate = (updatedTask: BatchTask) => {
-    setBatchTasks((prev) =>
-      prev.map((task) => (task.id === updatedTask.id ? updatedTask : task))
-    )
-  }
-
-  /**
-   * 任务完成处理
-   */
-  const handleTaskComplete = (task: BatchTask) => {
-    console.log("任务完成:", task)
-    message.success(`任务 ${task.id} 完成`)
-  }
-
-  /**
-   * 任务失败处理
-   */
-  const handleTaskFailed = (task: BatchTask, error: string) => {
-    console.log("任务失败:", task, error)
-    message.error(`任务 ${task.id} 失败: ${error}`)
-  }
-
-  /**
-   * 所有任务完成处理
-   */
-  const handleAllTasksComplete = (tasks: BatchTask[]) => {
-    console.log("所有任务完成:", tasks)
-    message.success(`批量视频生成完成，共处理 ${tasks.length} 个任务`)
-  }
-
-  // 组件挂载时加载AI请求源
-  useEffect(() => {
-    loadDefaultAISource()
-
-    // 监听存储变化，当AI源配置更新时自动刷新
-    const handleStorageChange = {
-      ai_sources: () => {
-        loadDefaultAISource()
-      }
-    }
-
-    storage.watch(handleStorageChange)
-
-    // 清理监听器
-    return () => {
-      storage.unwatch(handleStorageChange)
-    }
-  }, [])
-
+  
   return (
-    <div style={{ height: "500px", display: "flex", flexDirection: "column" }}>
-      <Tabs
-        activeKey={activeTab}
-        onChange={setActiveTab}
-        style={{ flex: 1, display: "flex", flexDirection: "column" }}
-        tabBarExtraContent={
+    <div className="h-full flex flex-col" style={{ height: 'calc(100vh - 200px)' }}>
+      {/* 模型和基础设置 */}
+      <Card size="small" className="mb-4">
+        <Row gutter={16}>
+          <Col span={6}>
+            <Text strong className="text-sm">选择模型</Text>
+            <Select
+              value={selectedModel}
+              onChange={setSelectedModel}
+              className="w-full mt-1"
+              placeholder="选择视频生成模型"
+              disabled={videoModels.length === 0}
+            >
+              {videoModels.map(model => (
+                <Option key={model.id} value={model.id}>
+                  <Space>
+                    <span>{model.name}</span>
+                    <Tag size="small">{model.platform}</Tag>
+                  </Space>
+                </Option>
+              ))}
+            </Select>
+            {videoModels.length === 0 && currentSource && (
+              <Text type="danger" className="text-xs mt-1 block">
+                当前AI源 {currentSource.name} 暂不支持视频生成
+              </Text>
+            )}
+          </Col>
+          
+          <Col span={4}>
+            <Text strong className="text-sm">视频时长</Text>
+            <InputNumber
+              min={1}
+              max={60}
+              value={videoDuration}
+              onChange={setVideoDuration}
+              className="w-full mt-1"
+              addonAfter="秒"
+            />
+          </Col>
+          
+          <Col span={4}>
+            <Text strong className="text-sm">分辨率</Text>
+            <Select
+              value={videoResolution}
+              onChange={setVideoResolution}
+              className="w-full mt-1"
+            >
+              <Option value="480p">480p (SD)</Option>
+              <Option value="720p">720p (HD)</Option>
+              <Option value="1080p">1080p (FHD)</Option>
+              <Option value="1440p">1440p (QHD)</Option>
+              <Option value="2160p">2160p (4K)</Option>
+            </Select>
+          </Col>
+          
+          <Col span={4}>
+            <Text strong className="text-sm">风格</Text>
+            <Select
+              value={videoStyle}
+              onChange={setVideoStyle}
+              className="w-full mt-1"
+            >
+              <Option value="cinematic">电影感</Option>
+              <Option value="realistic">写实</Option>
+              <Option value="anime">动漫</Option>
+              <Option value="artistic">艺术</Option>
+              <Option value="documentary">纪录片</Option>
+              <Option value="commercial">商业广告</Option>
+              <Option value="music-video">音乐视频</Option>
+            </Select>
+          </Col>
+          
+          <Col span={4}>
+            <Text strong className="text-sm">生成数量</Text>
+            <InputNumber
+              min={1}
+              max={5}
+              value={videoCount}
+              onChange={setVideoCount}
+              className="w-full mt-1"
+            />
+          </Col>
+        </Row>
+        
+        <div className="mt-3">
           <Space>
+            <Tooltip title="显示高级参数">
+              <Button
+                type="text"
+                size="small"
+                icon={<SettingOutlined />}
+                onClick={() => setShowAdvanced(!showAdvanced)}
+              >
+                高级设置
+              </Button>
+            </Tooltip>
+            
+            <Tooltip title="查看历史记录">
+              <Button
+                type="text"
+                size="small"
+                icon={<HistoryOutlined />}
+                onClick={() => setShowHistory(!showHistory)}
+              >
+                历史
+              </Button>
+            </Tooltip>
+            
             <Button
-              icon={<FileExcelOutlined />}
-              onClick={() => setIsImportModalVisible(true)}
-              size="small">
-              导入Excel
-            </Button>
-            <Button
-              icon={<SettingOutlined />}
-              onClick={() => setIsTemplateModalVisible(true)}
-              size="small">
-              模板管理
+              type="text"
+              size="small"
+              icon={<SaveOutlined />}
+              onClick={exportVideoInfo}
+            >
+              导出
             </Button>
           </Space>
-        }
-        items={[
-          {
-            key: "single",
-            label: (
-              <span>
-                <UserOutlined />
-                单个生成
-              </span>
-            ),
-            children: (
-              <div
-                style={{
-                  height: "100%",
-                  display: "flex",
-                  flexDirection: "column"
-                }}>
-                <Card size="small" style={{ marginBottom: 16 }}>
-                  <Space
-                    direction="vertical"
-                    size="middle"
-                    style={{ width: "100%" }}>
-                    {/* 源图片上传 */}
-                    <div>
-                      <Text
-                        strong
-                        style={{ display: "block", marginBottom: 8 }}>
-                        源图片
-                      </Text>
-                      <Space align="start">
-                        <Upload
-                          accept="image/*"
-                          beforeUpload={handleImageUpload}
-                          showUploadList={false}
-                          disabled={isGenerating}>
-                          <Button
-                            icon={<UploadOutlined />}
-                            disabled={isGenerating}>
-                            上传图片
-                          </Button>
-                        </Upload>
-                        {sourceImageUrl && (
-                          <div
-                            style={{
-                              width: 80,
-                              height: 60,
-                              border: "1px solid #d9d9d9",
-                              borderRadius: 4,
-                              overflow: "hidden"
-                            }}>
-                            <img
-                              src={sourceImageUrl}
-                              alt="源图片"
-                              style={{
-                                width: "100%",
-                                height: "100%",
-                                objectFit: "cover"
-                              }}
-                            />
-                          </div>
-                        )}
+        </div>
+      </Card>
+      
+      {/* 高级参数设置 */}
+      {showAdvanced && (
+        <Card size="small" className="mb-4" title="高级参数">
+          <Row gutter={16}>
+            <Col span={6}>
+              <Text strong className="text-sm">运动强度</Text>
+              <Rate
+                count={10}
+                value={advancedParams.motionIntensity}
+                onChange={(value) => setAdvancedParams(prev => ({ ...prev, motionIntensity: value as number }))}
+                className="mt-2"
+              />
+              <Text type="secondary" className="text-xs block mt-1">
+                {advancedParams.motionIntensity}/10
+              </Text>
+            </Col>
+            
+            <Col span={6}>
+              <Text strong className="text-sm">镜头运动</Text>
+              <Select
+                value={advancedParams.cameraMovement}
+                onChange={(value) => setAdvancedParams(prev => ({ ...prev, cameraMovement: value }))}
+                className="w-full mt-1"
+              >
+                <Option value="static">静态</Option>
+                <Option value="pan">平移</Option>
+                <Option value="tilt">倾斜</Option>
+                <Option value="zoom">缩放</Option>
+                <Option value="dolly">推拉</Option>
+                <Option value="tracking">跟踪</Option>
+                <Option value="orbit">环绕</Option>
+              </Select>
+            </Col>
+            
+            <Col span={6}>
+              <Text strong className="text-sm">帧率</Text>
+              <Select
+                value={advancedParams.fps}
+                onChange={(value) => setAdvancedParams(prev => ({ ...prev, fps: value as number }))}
+                className="w-full mt-1"
+              >
+                <Option value={15}>15 fps (省流量)</Option>
+                <Option value={24}>24 fps (电影)</Option>
+                <Option value={30}>30 fps (标准)</Option>
+                <Option value={60}>60 fps (流畅)</Option>
+              </Select>
+            </Col>
+            
+            <Col span={6}>
+              <Text strong className="text-sm">质量模式</Text>
+              <Select
+                value={advancedParams.quality}
+                onChange={(value) => setAdvancedParams(prev => ({ ...prev, quality: value }))}
+                className="w-full mt-1"
+              >
+                <Option value="draft">草稿 (快速)</Option>
+                <Option value="standard">标准</Option>
+                <Option value="high">高质量</Option>
+                <Option value="ultra">超高质量</Option>
+              </Select>
+            </Col>
+          </Row>
+          
+          <Row gutter={16} className="mt-3">
+            <Col span={6}>
+              <Text strong className="text-sm">长宽比</Text>
+              <Select
+                value={advancedParams.aspectRatio}
+                onChange={(value) => setAdvancedParams(prev => ({ ...prev, aspectRatio: value }))}
+                className="w-full mt-1"
+              >
+                <Option value="16:9">16:9 (横屏)</Option>
+                <Option value="9:16">9:16 (竖屏)</Option>
+                <Option value="1:1">1:1 (正方形)</Option>
+                <Option value="4:3">4:3 (传统)</Option>
+                <Option value="21:9">21:9 (宽屏)</Option>
+              </Select>
+            </Col>
+            
+            <Col span={6}>
+              <Text strong className="text-sm">随机种子</Text>
+              <Input
+                value={advancedParams.seed}
+                onChange={(e) => setAdvancedParams(prev => ({ ...prev, seed: e.target.value }))}
+                placeholder="留空使用随机种子"
+                className="mt-1"
+              />
+            </Col>
+            
+            <Col span={12}>
+              <Text strong className="text-sm">负面提示词</Text>
+              <TextArea
+                value={advancedParams.negativePrompt}
+                onChange={(e) => setAdvancedParams(prev => ({ ...prev, negativePrompt: e.target.value }))}
+                placeholder="描述不想要的内容，例如：模糊, 抖动, 低质量"
+                rows={1}
+                className="mt-1"
+              />
+            </Col>
+          </Row>
+          
+          <div className="mt-3">
+            <Switch
+              checked={advancedParams.enableUpscale}
+              onChange={(checked) => setAdvancedParams(prev => ({ ...prev, enableUpscale: checked }))}
+              checkedChildren="启用超分辨率"
+              unCheckedChildren="关闭超分辨率"
+            />
+            {advancedParams.enableUpscale && (
+              <Select
+                value={advancedParams.upscaleModel}
+                onChange={(value) => setAdvancedParams(prev => ({ ...prev, upscaleModel: value }))}
+                className="ml-3"
+                style={{ width: 150 }}
+              >
+                <Option value="R-ESRGAN 4x+">R-ESRGAN 4x+</Option>
+                <Option value="Real-ESRGAN">Real-ESRGAN</Option>
+                <Option value="SwinIR">SwinIR</Option>
+              </Select>
+            )}
+          </div>
+        </Card>
+      )}
+      
+      {/* 历史记录侧边栏 */}
+      {showHistory && (
+        <Card size="small" className="mb-4" title="历史记录">
+          <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+            {generationHistory.length === 0 ? (
+              <Text type="secondary">暂无历史记录</Text>
+            ) : (
+              <Space direction="vertical" size="small" className="w-full">
+                {generationHistory.map(item => (
+                  <Card 
+                    key={item.id} 
+                    size="small" 
+                    hoverable
+                    onClick={() => useHistoryItem(item)}
+                    className="cursor-pointer"
+                  >
+                    <Text ellipsis={{ tooltip: item.prompt }} className="text-sm">
+                      {item.prompt}
+                    </Text>
+                    <div className="flex justify-between mt-1">
+                      <Space>
+                        <Tag size="small">{item.model}</Tag>
+                        {item.hasSourceImage && <Tag size="small" icon={<UploadOutlined />}>图生视频</Tag>}
                       </Space>
-                    </div>
-
-                    <div>
-                      <Text
-                        strong
-                        style={{ display: "block", marginBottom: 8 }}>
-                        视频描述
+                      <Text type="secondary" className="text-xs">
+                        {new Date(item.timestamp).toLocaleString()}
                       </Text>
+                    </div>
+                  </Card>
+                ))}
+              </Space>
+            )}
+          </div>
+        </Card>
+      )}
+      
+      {/* 主内容区 */}
+      <div className="flex-1 flex flex-col">
+        <Tabs
+          activeKey={activeTab}
+          onChange={setActiveTab}
+          className="flex-1 flex flex-col"
+          items={[
+            {
+              key: "single",
+              label: "单个生成",
+              children: (
+                <div className="flex-1 flex flex-col">
+                  {/* 图片上传和提示词输入 */}
+                  <Card size="small" className="mb-4">
+                    <div>
+                      <Text strong className="text-sm">上传图片</Text>
+                      <Upload
+                        accept="image/*"
+                        maxCount={1}
+                        beforeUpload={handleImageUpload}
+                        showUploadList={false}
+                      >
+                        <Button icon={<UploadOutlined />}>
+                          {sourceImage ? "重新上传" : "选择图片"}
+                        </Button>
+                      </Upload>
+                      
+                      {sourceImageUrl && (
+                        <div className="mt-2">
+                          <Image
+                            src={sourceImageUrl}
+                            alt="Source"
+                            width={150}
+                            height={150}
+                            style={{ objectFit: 'cover' }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                    
+                    <div className="mt-3">
+                      <Text strong className="text-sm">视频描述</Text>
                       <TextArea
                         value={prompt}
                         onChange={(e) => setPrompt(e.target.value)}
-                        placeholder="描述您想要的视频效果，例如：让图片中的人物挥手微笑"
-                        rows={3}
-                        disabled={isGenerating}
+                        placeholder={
+                          sourceImageUrl
+                            ? "描述你想要的视频效果（可选）"
+                            : "描述你想要生成的视频内容..."
+                        }
+                        autoSize={{ minRows: 3, maxRows: 6 }}
                       />
                     </div>
-
-                    <Row gutter={16}>
-                      <Col span={6}>
-                        <Text
-                          strong
-                          style={{ display: "block", marginBottom: 8 }}>
-                          选择模型
-                        </Text>
-                        <Select
-                          value={selectedModel}
-                          onChange={setSelectedModel}
-                          disabled={
-                            isGenerating || availableModels.length === 0
-                          }
-                          style={{ width: "100%" }}
-                          placeholder="选择生成模型">
-                          {availableModels.map((model) => (
-                            <Option key={model.id} value={model.id}>
-                              {model.name}
-                            </Option>
-                          ))}
-                        </Select>
-                      </Col>
-                      <Col span={6}>
-                        <Text
-                          strong
-                          style={{ display: "block", marginBottom: 8 }}>
-                          生成数量
-                        </Text>
-                        <InputNumber
-                          min={1}
-                          max={3}
-                          value={videoCount}
-                          onChange={(value) => setVideoCount(value || 1)}
-                          disabled={isGenerating}
-                          style={{ width: "100%" }}
-                        />
-                      </Col>
-                      <Col span={6}>
-                        <Text
-                          strong
-                          style={{ display: "block", marginBottom: 8 }}>
-                          视频时长(秒)
-                        </Text>
-                        <InputNumber
-                          min={3}
-                          max={10}
-                          value={videoDuration}
-                          onChange={(value) => setVideoDuration(value || 5)}
-                          disabled={isGenerating}
-                          style={{ width: "100%" }}
-                        />
-                      </Col>
-                      <Col span={6}>
-                        <Text
-                          strong
-                          style={{ display: "block", marginBottom: 8 }}>
-                          视频风格
-                        </Text>
-                        <Select
-                          value={videoStyle}
-                          onChange={setVideoStyle}
-                          disabled={isGenerating}
-                          style={{ width: "100%" }}>
-                          <Option value="realistic">写实</Option>
-                          <Option value="artistic">艺术</Option>
-                          <Option value="cinematic">电影感</Option>
-                          <Option value="animated">动画</Option>
-                        </Select>
-                      </Col>
-                    </Row>
-
-                    <Space>
-                      <Button
-                        type="primary"
-                        icon={<VideoCameraOutlined />}
-                        onClick={handleGenerateVideos}
-                        loading={isGenerating}
-                        disabled={!prompt.trim() || !sourceImageUrl}>
-                        生成视频
-                      </Button>
-                      <Button
-                        onClick={handleClearVideos}
-                        disabled={videos.length === 0 || isGenerating}>
-                        清空视频
-                      </Button>
-                      {currentAISource && (
-                        <Text type="secondary" style={{ fontSize: 12 }}>
-                          当前模型：{currentAISource.name}
+                    
+                    <div className="mt-3 flex justify-between items-center">
+                      <Space>
+                        <Button
+                          type="primary"
+                          icon={<VideoCameraOutlined />}
+                          onClick={handleGenerate}
+                          loading={isGenerating}
+                          disabled={(!prompt.trim() && !sourceImageUrl) || videoModels.length === 0}
+                        >
+                          生成视频
+                        </Button>
+                        
+                        <Button
+                          icon={<BulbOutlined />}
+                          onClick={() => setIsTemplateModalVisible(true)}
+                        >
+                          使用模板
+                        </Button>
+                        
+                        {videos.length > 0 && (
+                          <Button
+                            icon={<DeleteOutlined />}
+                            onClick={() => setVideos([])}
+                          >
+                            清空列表
+                          </Button>
+                        )}
+                      </Space>
+                      
+                      {currentSource && (
+                        <Text type="secondary" className="text-xs">
+                          当前引擎: {currentSource.name}
                         </Text>
                       )}
-                    </Space>
-                  </Space>
-                </Card>
-
-                {/* 视频展示区域 */}
-                <div style={{ flex: 1, overflowY: "auto" }}>
-                  {videos.length === 0 ? (
-                    <div
-                      style={{
-                        textAlign: "center",
-                        padding: "60px 20px",
-                        color: "#999",
-                        border: "2px dashed #d9d9d9",
-                        borderRadius: 8
-                      }}>
-                      <VideoCameraOutlined
-                        style={{ fontSize: 48, marginBottom: 16 }}
-                      />
-                      <br />
-                      <Text type="secondary">
-                        还没有生成视频，上传图片并输入描述开始创作吧！
-                      </Text>
                     </div>
-                  ) : (
-                    <Row gutter={[16, 16]}>
-                      {videos.map((video) => (
-                        <Col key={video.id} xs={24} sm={12} md={8}>
-                          <Card
-                            size="small"
-                            cover={
-                              video.status === "generating" ? (
-                                <div
-                                  style={{
-                                    height: 180,
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    backgroundColor: "#f5f5f5",
-                                    position: "relative"
-                                  }}>
-                                  <img
-                                    src={video.thumbnailUrl}
-                                    alt="生成中"
-                                    style={{
-                                      width: "100%",
-                                      height: "100%",
-                                      objectFit: "cover",
-                                      opacity: 0.3
-                                    }}
-                                  />
-                                  <div
-                                    style={{
-                                      position: "absolute",
-                                      top: "50%",
-                                      left: "50%",
-                                      transform: "translate(-50%, -50%)",
-                                      textAlign: "center"
-                                    }}>
+                  </Card>
+                  
+                  {/* 生成历史 */}
+                  <div className="flex-1 overflow-y-auto">
+                    {videos.length === 0 ? (
+                      <div className="h-full flex items-center justify-center border-2 border-dashed border-gray-300 rounded-lg">
+                        <Space direction="vertical" align="center">
+                          <VideoCameraOutlined className="text-4xl text-gray-400" />
+                          <Text type="secondary">
+                            {sourceImageUrl ? "输入描述开始生成视频" : "上传图片或输入描述开始创作"}
+                          </Text>
+                        </Space>
+                      </div>
+                    ) : (
+                      <Row gutter={[16, 16]}>
+                        {videos.map(video => (
+                          <Col key={video.id} xs={24} sm={12} md={8} lg={6}>
+                            <Card
+                              hoverable
+                              cover={
+                                video.status === "generating" ? (
+                                  <div className="h-48 bg-gray-100 flex flex-col items-center justify-center">
                                     <Progress
                                       type="circle"
                                       percent={Math.round(video.progress || 0)}
-                                      size={60}
+                                      size={80}
                                     />
-                                    <div style={{ marginTop: 8 }}>
-                                      <Text
-                                        type="secondary"
-                                        style={{ fontSize: 12 }}>
-                                        生成中...
-                                      </Text>
+                                    <Text type="secondary" className="mt-2 text-sm">
+                                      生成中...
+                                    </Text>
+                                  </div>
+                                ) : (
+                                  <div className="relative">
+                                    <Image
+                                      src={video.thumbnailUrl || "https://via.placeholder.com/400x225"}
+                                      alt={video.prompt}
+                                      className="h-48 object-cover"
+                                      preview={false}
+                                    />
+                                    <div className="absolute inset-0 bg-black bg-opacity-40 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+                                      <PlayCircleOutlined className="text-4xl text-white" />
                                     </div>
                                   </div>
-                                </div>
-                              ) : video.status === "failed" ? (
-                                <div
-                                  style={{
-                                    height: 180,
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    backgroundColor: "#fff2f0",
-                                    color: "#ff4d4f"
-                                  }}>
-                                  生成失败
-                                </div>
-                              ) : (
-                                <div
-                                  style={{ position: "relative", height: 180 }}>
-                                  <img
-                                    src={video.thumbnailUrl}
-                                    alt={video.prompt}
-                                    style={{
-                                      width: "100%",
-                                      height: "100%",
-                                      objectFit: "cover"
-                                    }}
-                                  />
-                                  <div
-                                    style={{
-                                      position: "absolute",
-                                      top: "50%",
-                                      left: "50%",
-                                      transform: "translate(-50%, -50%)",
-                                      fontSize: 24,
-                                      color: "white",
-                                      textShadow: "0 0 4px rgba(0,0,0,0.5)",
-                                      cursor: "pointer"
-                                    }}>
-                                    <PlayCircleOutlined
-                                      onClick={() => handlePlayVideo(video.url)}
-                                      title="播放视频"
-                                    />
-                                  </div>
-                                  <div
-                                    style={{
-                                      position: "absolute",
-                                      bottom: 4,
-                                      right: 4,
-                                      backgroundColor: "rgba(0,0,0,0.7)",
-                                      color: "white",
-                                      padding: "2px 6px",
-                                      borderRadius: 4,
-                                      fontSize: 11
-                                    }}>
-                                    {video.duration}s
-                                  </div>
-                                </div>
-                              )
-                            }
-                            actions={[
-                              <Button
-                                key="play"
-                                type="text"
-                                icon={<PlayCircleOutlined />}
-                                onClick={() => handlePlayVideo(video.url)}
-                                disabled={video.status !== "completed"}
-                                title="播放"
-                              />,
-                              <Button
-                                key="download"
-                                type="text"
-                                icon={<DownloadOutlined />}
-                                onClick={() =>
-                                  handleDownloadVideo(video.url, video.prompt)
-                                }
-                                disabled={video.status !== "completed"}
-                                title="下载"
-                              />,
-                              <Button
-                                key="regenerate"
-                                type="text"
-                                icon={<ReloadOutlined />}
-                                onClick={() =>
-                                  handleRegenerateVideo(
-                                    video.prompt,
-                                    video.sourceImageUrl
-                                  )
-                                }
-                                disabled={isGenerating}
-                                title="重新生成"
-                              />,
-                              <Button
-                                key="delete"
-                                type="text"
-                                danger
-                                icon={<DeleteOutlined />}
-                                onClick={() => handleDeleteVideo(video.id)}
-                                title="删除"
-                              />
-                            ]}>
-                            <Card.Meta
-                              description={
-                                <div>
-                                  <Text
-                                    ellipsis={{ tooltip: video.prompt }}
-                                    style={{ fontSize: 12 }}>
-                                    {video.prompt}
-                                  </Text>
-                                  <br />
-                                  <Text
-                                    type="secondary"
-                                    style={{ fontSize: 11 }}>
-                                    {new Date(video.timestamp).toLocaleString()}
-                                  </Text>
-                                </div>
+                                )
                               }
-                            />
-                          </Card>
-                        </Col>
-                      ))}
-                    </Row>
-                  )}
+                              actions={[
+                                <Tooltip title="播放">
+                                  <Button
+                                    type="text"
+                                    icon={<PlayCircleOutlined />}
+                                    disabled={video.status !== "completed"}
+                                  >
+                                    播放
+                                  </Button>
+                                </Tooltip>,
+                                <Tooltip title="下载">
+                                  <Button
+                                    type="text"
+                                    icon={<DownloadOutlined />}
+                                    disabled={video.status !== "completed"}
+                                    onClick={() => handleDownload(video)}
+                                  />
+                                </Tooltip>,
+                                <Tooltip title="复制提示词">
+                                  <Button
+                                    type="text"
+                                    icon={<CopyOutlined />}
+                                    onClick={() => copyPrompt(video.prompt)}
+                                  />
+                                </Tooltip>,
+                                <Tooltip title="删除">
+                                  <Button
+                                    type="text"
+                                    danger
+                                    icon={<DeleteOutlined />}
+                                    onClick={() => setVideos(prev => prev.filter(v => v.id !== video.id))}
+                                  />
+                                </Tooltip>
+                              ]}
+                            >
+                              <Card.Meta
+                                title={
+                                  <Text ellipsis={{ tooltip: video.prompt }} className="text-sm">
+                                    {video.prompt || "未命名视频"}
+                                  </Text>
+                                }
+                                description={
+                                  <Space direction="vertical" size="small" className="w-full">
+                                    <div className="flex justify-between">
+                                      <Tag size="small">{video.model}</Tag>
+                                      <Tag size="small">{video.resolution}</Tag>
+                                    </div>
+                                    <div className="flex justify-between text-xs">
+                                      <Text type="secondary">
+                                        时长: {video.duration}秒
+                                      </Text>
+                                      <Text type="secondary">
+                                        {video.status === "completed" ? "已完成" : "生成中"}
+                                      </Text>
+                                    </div>
+                                    {video.seed && (
+                                      <Text type="secondary" className="text-xs">
+                                        Seed: {video.seed}
+                                      </Text>
+                                    )}
+                                    <Text type="secondary" className="text-xs">
+                                      {new Date(video.timestamp).toLocaleString()}
+                                    </Text>
+                                  </Space>
+                                }
+                              />
+                            </Card>
+                          </Col>
+                        ))}
+                      </Row>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )
-          },
-          {
-            key: "batch",
-            label: (
-              <span>
-                <BulbOutlined />
-                批量生成
-              </span>
-            ),
-            children: (
-              <div style={{ height: "100%" }}>
+              )
+            },
+            {
+              key: "batch",
+              label: "批量生成",
+              children: (
                 <BatchProcessor
+                  type="video"
                   tasks={batchTasks}
-                  processFunction={processBatchVideoItem}
-                  onTaskUpdate={handleTaskUpdate}
-                  onTaskComplete={handleTaskComplete}
-                  onTaskFailed={handleTaskFailed}
-                  onAllTasksComplete={handleAllTasksComplete}
-                  config={batchConfig}
+                  onTasksChange={setBatchTasks}
                 />
-              </div>
-            )
-          }
-        ]}
-      />
-
-      {/* Excel导入模态框 */}
-      <Modal
-        title="导入Excel数据"
-        open={isImportModalVisible}
-        onCancel={() => setIsImportModalVisible(false)}
-        footer={null}
-        width={800}>
-        <ExcelImporter
-          onImportComplete={handleImportComplete}
-          onImportError={(error) => {
-            message.error(`导入失败: ${error}`)
-            setIsImportModalVisible(false)
-          }}
+              )
+            }
+          ]}
         />
-      </Modal>
-
-      {/* 模板管理模态框 */}
+      </div>
+      
+      {/* 模板选择弹窗 */}
       <Modal
-        title="模板管理"
+        title="选择模板"
         open={isTemplateModalVisible}
         onCancel={() => setIsTemplateModalVisible(false)}
         footer={null}
-        width={800}>
+        width={800}
+      >
         <TemplateManager
-          onTemplateSelect={(template) => {
-            console.log("选择模板:", template)
+          type="video"
+          onSelect={(template) => {
+            setPrompt(template.content)
+            setIsTemplateModalVisible(false)
           }}
-          onTemplateApply={handleTemplateApply}
-          currentTaskType={BatchTaskType.IMAGE_TO_VIDEO}
+        />
+      </Modal>
+      
+      {/* 批量导入弹窗 */}
+      <Modal
+        title="批量导入"
+        open={isImportModalVisible}
+        onCancel={() => setIsImportModalVisible(false)}
+        footer={null}
+        width={600}
+      >
+        <ExcelImporter
+          type="video"
+          onImport={(data) => {
+            console.log("导入数据:", data)
+            setIsImportModalVisible(false)
+          }}
         />
       </Modal>
     </div>

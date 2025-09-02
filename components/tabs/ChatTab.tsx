@@ -1,15 +1,40 @@
 import { useState, useRef, useEffect } from "react"
-import { Input, Button, Space, Typography, Card, Avatar, Spin, message } from "antd"
-import { SendOutlined, UserOutlined, RobotOutlined } from "@ant-design/icons"
-import { Storage } from "@plasmohq/storage"
-import { apiService } from "../../services/apiService"
-import type { AISource } from "../../src/config/engines"
+import { 
+  Input, 
+  Button, 
+  Space, 
+  Typography, 
+  Card, 
+  Avatar, 
+  Spin, 
+  Select, 
+  Tag, 
+  Switch, 
+  Slider,
+  message,
+  Tooltip
+} from "antd"
+import { 
+  SendOutlined, 
+  UserOutlined, 
+  RobotOutlined, 
+  ImageOutlined,
+  AudioOutlined,
+  VideoCameraOutlined,
+  SettingOutlined,
+  ClearOutlined,
+  SaveOutlined,
+  CopyOutlined,
+  ThumbsUpOutlined,
+  ThumbsDownOutlined
+} from "@ant-design/icons"
+import { useChat, useAISources, useUI } from "../../src/hooks"
+import { modelManager, DEFAULT_MODELS } from "../../src/config/models"
+import { cacheManager } from "../../src/utils/cache"
 
 const { Text } = Typography
 const { TextArea } = Input
-
-// 存储实例
-const storage = new Storage()
+const { Option } = Select
 
 // 消息类型
 interface ChatMessage {
@@ -18,251 +43,402 @@ interface ChatMessage {
   content: string
   timestamp: number
   isStreaming?: boolean
+  attachments?: {
+    type: 'image' | 'audio' | 'video'
+    url: string
+    name: string
+  }[]
+  model?: string
+  feedback?: 'good' | 'bad'
 }
 
 /**
- * 聊天标签页组件 - 支持流式API调用和消息展示
+ * 聊天标签页组件 - 支持最新AI模型和功能
  */
 function ChatTab() {
-  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const { messages, isStreaming, sendMessage, clearMessages } = useChat()
+  const { aiSources, currentSource, addAISource } = useAISources()
+  const { platform } = useUI()
   const [inputValue, setInputValue] = useState("")
-  const [isLoading, setIsLoading] = useState(false)
-  const [currentAISource, setCurrentAISource] = useState<AISource | null>(null)
+  const [selectedModel, setSelectedModel] = useState(DEFAULT_MODELS.CHAT)
+  const [temperature, setTemperature] = useState(0.7)
+  const [maxTokens, setMaxTokens] = useState(2000)
+  const [enableWebSearch, setEnableWebSearch] = useState(false)
+  const [enableCodeInterpreter, setEnableCodeInterpreter] = useState(false)
+  const [attachments, setAttachments] = useState<any[]>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  /**
-   * 滚动到消息底部
-   */
+  // 获取可用的聊天模型
+  const chatModels = modelManager.getModelsByCapability('supportsStreaming', true)
+
+  // 滚动到底部
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }
 
-  /**
-   * 加载默认AI请求源
-   */
-  const loadDefaultAISource = async () => {
-    try {
-      const sources = (await storage.get("ai_sources") as AISource[]) || []
-      const defaultSource = sources.find(source => source.isDefault) || sources[0]
-      setCurrentAISource(defaultSource || null)
-    } catch (error) {
-      console.error("加载AI请求源失败:", error)
-    }
-  }
-
-  /**
-   * 发送消息
-   */
-  const handleSendMessage = async () => {
-    if (!inputValue.trim()) {
-      message.warning("请输入消息内容")
-      return
-    }
-
-    if (!currentAISource) {
-      message.error("请先配置AI请求源")
-      return
-    }
-
-    const userMessage: ChatMessage = {
-      id: Date.now().toString(),
-      type: 'user',
-      content: inputValue.trim(),
-      timestamp: Date.now()
-    }
-
-    // 添加用户消息
-    setMessages(prev => [...prev, userMessage])
-    setInputValue("")
-    setIsLoading(true)
-
-    // 创建助手消息占位符
-    const assistantMessageId = (Date.now() + 1).toString()
-    const assistantMessage: ChatMessage = {
-      id: assistantMessageId,
-      type: 'assistant',
-      content: '',
-      timestamp: Date.now(),
-      isStreaming: true
-    }
-
-    setMessages(prev => [...prev, assistantMessage])
-
-    try {
-      // 准备消息历史
-      const chatMessages = [...messages, userMessage].map(msg => ({
-        id: msg.id,
-        role: msg.type === 'user' ? 'user' as const : 'assistant' as const,
-        content: msg.content,
-        timestamp: msg.timestamp
-      }))
-
-      // 使用流式API
-      const stream = apiService.streamChat(chatMessages, currentAISource)
-      let fullResponse = ''
-
-      for await (const chunk of stream) {
-        fullResponse += chunk
-        // 更新助手消息内容
-        setMessages(prev => prev.map(msg => 
-          msg.id === assistantMessageId 
-            ? { ...msg, content: fullResponse }
-            : msg
-        ))
-      }
-
-      // 完成流式响应
-      setMessages(prev => prev.map(msg => 
-        msg.id === assistantMessageId 
-          ? { ...msg, isStreaming: false }
-          : msg
-      ))
-
-    } catch (error) {
-      console.error('聊天API调用失败:', error)
-      message.error('发送消息失败，请检查网络连接和API配置')
-      
-      // 移除失败的助手消息
-      setMessages(prev => prev.filter(msg => msg.id !== assistantMessageId))
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  /**
-   * 清空聊天记录
-   */
-  const handleClearMessages = () => {
-    setMessages([])
-    message.success('聊天记录已清空')
-  }
-
-  // 组件挂载时加载AI请求源
-  useEffect(() => {
-    loadDefaultAISource()
-    
-    // 监听存储变化，当AI源配置更新时自动刷新
-    const handleStorageChange = {
-      ai_sources: () => {
-        loadDefaultAISource()
-      }
-    }
-    
-    storage.watch(handleStorageChange)
-    
-    // 清理监听器
-    return () => {
-      storage.unwatch(handleStorageChange)
-    }
-  }, [])
-
-  // 自动滚动到底部
   useEffect(() => {
     scrollToBottom()
   }, [messages])
 
+  // 处理发送消息
+  const handleSend = async () => {
+    if (!inputValue.trim() && attachments.length === 0) return
+    
+    if (!currentSource) {
+      message.warning("请先在设置中配置AI源")
+      return
+    }
+
+    const messageContent = {
+      text: inputValue.trim(),
+      attachments,
+      settings: {
+        model: selectedModel,
+        temperature,
+        maxTokens,
+        enableWebSearch,
+        enableCodeInterpreter
+      }
+    }
+
+    setInputValue("")
+    setAttachments([])
+    await sendMessage(JSON.stringify(messageContent))
+  }
+
+  // 处理键盘事件
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault()
+      handleSend()
+    }
+  }
+
+  // 处理文件上传
+  const handleFileUpload = (file: File, type: 'image' | 'audio' | 'video') => {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      setAttachments(prev => [...prev, {
+        type,
+        url: e.target?.result as string,
+        name: file.name
+      }])
+    }
+    reader.readAsDataURL(file)
+  }
+
+  // 移除附件
+  const removeAttachment = (index: number) => {
+    setAttachments(prev => prev.filter((_, i) => i !== index))
+  }
+
+  // 复制消息
+  const copyMessage = (content: string) => {
+    navigator.clipboard.writeText(content)
+    message.success("已复制到剪贴板")
+  }
+
+  // 反馈消息质量
+  const handleFeedback = (messageId: string, feedback: 'good' | 'bad') => {
+    // TODO: 发送反馈到服务器
+    console.log(`Message ${messageId} feedback: ${feedback}`)
+  }
+
+  // 导出聊天记录
+  const exportChat = () => {
+    const chatData = {
+      messages,
+      exportTime: new Date().toISOString(),
+      model: selectedModel
+    }
+    
+    const blob = new Blob([JSON.stringify(chatData, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `chat_${Date.now()}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    
+    message.success("聊天记录已导出")
+  }
+
   return (
-    <div style={{ height: '500px', display: 'flex', flexDirection: 'column' }}>
-      {/* 聊天消息区域 */}
-      <div 
-        style={{ 
-          flex: 1, 
-          overflowY: 'auto', 
-          padding: '16px 0',
-          marginBottom: 16,
-          border: '1px solid #f0f0f0',
-          borderRadius: 8,
-          backgroundColor: '#fafafa'
-        }}
-      >
+    <div className="h-full flex flex-col" style={{ height: 'calc(100vh - 200px)' }}>
+      {/* 模型选择和设置 */}
+      <Card size="small" className="mb-4">
+        <Space wrap>
+          <Select
+            value={selectedModel}
+            onChange={setSelectedModel}
+            style={{ width: 200 }}
+            placeholder="选择模型"
+          >
+            {chatModels.map(model => (
+              <Option key={model.id} value={model.id}>
+                <Space>
+                  <span>{model.name}</span>
+                  <Tag size="small">{model.platform}</Tag>
+                </Space>
+              </Option>
+            ))}
+          </Select>
+          
+          <Tooltip title="创造性：值越高越随机">
+            <span className="text-sm">温度: {temperature}</span>
+            <Slider
+              min={0}
+              max={2}
+              step={0.1}
+              value={temperature}
+              onChange={setTemperature}
+              style={{ width: 100 }}
+            />
+          </Tooltip>
+          
+          <Tooltip title="启用网络搜索">
+            <Switch
+              checked={enableWebSearch}
+              onChange={setEnableWebSearch}
+              checkedChildren="搜索"
+              unCheckedChildren="搜索"
+            />
+          </Tooltip>
+          
+          <Tooltip title="启用代码解释器">
+            <Switch
+              checked={enableCodeInterpreter}
+              onChange={setEnableCodeInterpreter}
+              checkedChildren="代码"
+              unCheckedChildren="代码"
+            />
+          </Switch>
+          
+          <Button 
+            icon={<SaveOutlined />} 
+            onClick={exportChat}
+            size="small"
+          >
+            导出
+          </Button>
+        </Space>
+      </Card>
+
+      {/* 消息列表 */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50 rounded-lg">
         {messages.length === 0 ? (
-          <div style={{ 
-            textAlign: 'center', 
-            color: '#999', 
-            padding: '40px 20px',
-            fontSize: '14px'
-          }}>
-            开始对话吧！输入您的问题，AI助手将为您提供帮助。
+          <div className="h-full flex items-center justify-center">
+            <Space direction="vertical" align="center">
+              <Text type="secondary" className="text-lg">
+                {currentSource ? '开始聊天吧！' : '请先在设置中配置AI源'}
+              </Text>
+              {currentSource && (
+                <Text type="secondary">
+                  支持 GPT-5、Claude 4、Gemini 2.0 等最新模型
+                </Text>
+              )}
+            </Space>
           </div>
         ) : (
-          <Space direction="vertical" size="middle" style={{ width: '100%', padding: '0 16px' }}>
-            {messages.map((message) => (
-              <div key={message.id} style={{ display: 'flex', gap: 12 }}>
-                <Avatar 
-                  icon={message.type === 'user' ? <UserOutlined /> : <RobotOutlined />}
-                  style={{ 
-                    backgroundColor: message.type === 'user' ? '#1890ff' : '#52c41a',
-                    flexShrink: 0
-                  }}
-                />
-                <Card 
-                  size="small" 
-                  style={{ 
-                    flex: 1,
-                    backgroundColor: message.type === 'user' ? '#e6f7ff' : '#f6ffed'
-                  }}
-                >
-                  <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                    {message.content}
-                    {message.isStreaming && (
-                      <Spin size="small" style={{ marginLeft: 8 }} />
-                    )}
-                  </div>
-                  <Text 
-                    type="secondary" 
-                    style={{ fontSize: '12px', marginTop: 8, display: 'block' }}
+          messages.map((message) => (
+            <div
+              key={message.id}
+              className={`flex gap-3 ${
+                message.type === 'user' ? 'justify-end' : 'justify-start'
+              }`}
+            >
+              {message.type === 'assistant' && (
+                <Avatar icon={<RobotOutlined />} className="flex-shrink-0" />
+              )}
+              <Card
+                className={`max-w-[80%] ${
+                  message.type === 'user'
+                    ? 'bg-blue-500 text-white'
+                    : 'bg-white'
+                }`}
+                bodyStyle={{ padding: '12px 16px' }}
+              >
+                <div className="flex items-start justify-between mb-2">
+                  <Text
+                    className={`whitespace-pre-wrap ${
+                      message.type === 'user' ? 'text-white' : ''
+                    }`}
                   >
-                    {new Date(message.timestamp).toLocaleTimeString()}
+                    {message.content}
                   </Text>
-                </Card>
-              </div>
-            ))}
-          </Space>
+                  {message.isStreaming && (
+                    <Spin size="small" className="ml-2" />
+                  )}
+                </div>
+                
+                {/* 附件展示 */}
+                {message.attachments && message.attachments.length > 0 && (
+                  <div className="mt-2 space-y-2">
+                    {message.attachments.map((att, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        {att.type === 'image' && <ImageOutlined />}
+                        {att.type === 'audio' && <AudioOutlined />}
+                        {att.type === 'video' && <VideoCameraOutlined />}
+                        <Text className="text-sm">{att.name}</Text>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                
+                {/* 模型信息 */}
+                {message.model && (
+                  <Tag size="small" className="mt-2">
+                    {message.model}
+                  </Tag>
+                )}
+                
+                {/* 操作按钮 */}
+                {message.type === 'assistant' && !message.isStreaming && (
+                  <Space className="mt-2">
+                    <Button
+                      type="text"
+                      size="small"
+                      icon={<CopyOutlined />}
+                      onClick={() => copyMessage(message.content)}
+                    >
+                      复制
+                    </Button>
+                    <Button
+                      type="text"
+                      size="small"
+                      icon={<ThumbsUpOutlined />}
+                      className={message.feedback === 'good' ? 'text-blue-500' : ''}
+                      onClick={() => handleFeedback(message.id, 'good')}
+                    />
+                    <Button
+                      type="text"
+                      size="small"
+                      icon={<ThumbsDownOutlined />}
+                      className={message.feedback === 'bad' ? 'text-red-500' : ''}
+                      onClick={() => handleFeedback(message.id, 'bad')}
+                    />
+                  </Space>
+                )}
+              </Card>
+              {message.type === 'user' && (
+                <Avatar icon={<UserOutlined />} className="flex-shrink-0" />
+              )}
+            </div>
+          ))
         )}
         <div ref={messagesEndRef} />
       </div>
 
       {/* 输入区域 */}
-      <Card size="small">
-        <Space.Compact style={{ width: '100%' }}>
+      <div className="border-t bg-white p-4">
+        {/* 附件预览 */}
+        {attachments.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-2">
+            {attachments.map((att, i) => (
+              <Tag
+                key={i}
+                closable
+                onClose={() => removeAttachment(i)}
+                icon={att.type === 'image' ? <ImageOutlined /> : 
+                       att.type === 'audio' ? <AudioOutlined /> : <VideoCameraOutlined />}
+              >
+                {att.name}
+              </Tag>
+            ))}
+          </div>
+        )}
+        
+        <Space.Compact className="w-full">
           <TextArea
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
-            placeholder="输入您的问题..."
+            onKeyPress={handleKeyPress}
+            placeholder={
+              currentSource 
+                ? "输入消息... (支持图片、音频、视频)" 
+                : "请先配置AI源"
+            }
+            disabled={!currentSource || isStreaming}
             autoSize={{ minRows: 1, maxRows: 4 }}
-            onPressEnter={(e) => {
-              if (!e.shiftKey) {
-                e.preventDefault()
-                handleSendMessage()
-              }
-            }}
-            disabled={isLoading}
-            style={{ resize: 'none' }}
+            className="flex-1"
           />
           <Button
             type="primary"
             icon={<SendOutlined />}
-            onClick={handleSendMessage}
-            loading={isLoading}
-            disabled={!inputValue.trim() || !currentAISource}
+            onClick={handleSend}
+            disabled={(!inputValue.trim() && attachments.length === 0) || !currentSource || isStreaming}
+            loading={isStreaming}
           >
             发送
           </Button>
-        </Space.Compact>
-        
-        <div style={{ marginTop: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Text type="secondary" style={{ fontSize: '12px' }}>
-            {currentAISource ? `当前引擎: ${currentAISource.name}` : '未配置AI引擎'}
-          </Text>
-          <Button 
-            size="small" 
-            onClick={handleClearMessages}
-            disabled={messages.length === 0}
-          >
-            清空对话
+          <Button onClick={clearMessages} disabled={messages.length === 0}>
+            清空
           </Button>
-        </div>
-      </Card>
+        </Space>
+        
+        {/* 快捷操作 */}
+        <Space className="mt-2">
+          <input
+            type="file"
+            accept="image/*"
+            id="image-upload"
+            style={{ display: 'none' }}
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              if (file) handleFileUpload(file, 'image')
+            }}
+          />
+          <Button
+            size="small"
+            icon={<ImageOutlined />}
+            onClick={() => document.getElementById('image-upload')?.click()}
+          >
+            图片
+          </Button>
+          
+          <input
+            type="file"
+            accept="audio/*"
+            id="audio-upload"
+            style={{ display: 'none' }}
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              if (file) handleFileUpload(file, 'audio')
+            }}
+          />
+          <Button
+            size="small"
+            icon={<AudioOutlined />}
+            onClick={() => document.getElementById('audio-upload')?.click()}
+          >
+            音频
+          </Button>
+          
+          <input
+            type="file"
+            accept="video/*"
+            id="video-upload"
+            style={{ display: 'none' }}
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              if (file) handleFileUpload(file, 'video')
+            }}
+          />
+          <Button
+            size="small"
+            icon={<VideoCameraOutlined />}
+            onClick={() => document.getElementById('video-upload')?.click()}
+          >
+            视频
+          </Button>
+        </Space>
+        
+        {currentSource && (
+          <Text type="secondary" className="text-xs mt-2 block">
+            当前使用: {currentSource.name} | 模型: {selectedModel}
+          </Text>
+        )}
+      </div>
     </div>
   )
 }
