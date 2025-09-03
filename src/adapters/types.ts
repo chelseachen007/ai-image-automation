@@ -45,3 +45,29 @@ export interface PlatformAdapter {
   isMobile: boolean;
   isDesktop: boolean;
 }
+
+// AI引擎适配器接口
+export interface EngineAdapter {
+  generateText(params: {
+    prompt: string;
+    model?: string;
+    temperature?: number;
+    maxTokens?: number;
+    messages?: Array<{ role: string; content: string }>;
+  }): Promise<{ content: string; usage?: any }>;
+
+  generateImage(params: {
+    prompt: string;
+    model?: string;
+    size?: string;
+    quality?: string;
+    n?: number;
+  }): Promise<{ url: string; revisedPrompt?: string }>;
+
+  generateVideo(params: {
+    prompt: string;
+    model?: string;
+    image?: string;
+    duration?: number;
+  }): Promise<{ url: string; thumbnailUrl?: string }>;
+}

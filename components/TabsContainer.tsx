@@ -1,8 +1,15 @@
+import {
+  MessageOutlined,
+  PictureOutlined,
+  RobotOutlined,
+  VideoCameraOutlined
+} from "@ant-design/icons"
+
 import { ResponsiveTabs } from "../components/ui/ResponsiveTabs"
-import { MessageOutlined, PictureOutlined, VideoCameraOutlined } from "@ant-design/icons"
 import ChatTab from "./tabs/ChatTab"
-import Text2ImageTab from "./tabs/Text2ImageTab"
 import Image2VideoTab from "./tabs/Image2VideoTab"
+import Text2ImageTab from "./tabs/Text2ImageTab"
+import { WorkflowRunner } from "./WorkflowRunner"
 
 interface TabsContainerProps {
   className?: string
@@ -10,7 +17,7 @@ interface TabsContainerProps {
 }
 
 /**
- * 主要标签页容器组件 - 包含聊天、文生图、图生视频三个功能模块
+ * 主要标签页容器组件 - 包含聊天、文生图、图生视频、自动化工作流四个功能模块
  */
 function TabsContainer({ className, style }: TabsContainerProps) {
   const tabItems = [
@@ -31,6 +38,12 @@ function TabsContainer({ className, style }: TabsContainerProps) {
       label: "图生视频",
       icon: <VideoCameraOutlined />,
       children: <Image2VideoTab />
+    },
+    {
+      key: "workflow",
+      label: "自动化工作流",
+      icon: <RobotOutlined />,
+      children: <WorkflowRunner />
     }
   ]
 

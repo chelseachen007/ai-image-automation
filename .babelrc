@@ -1,0 +1,30 @@
+{
+  "presets": [
+    [
+      "@babel/preset-env",
+      {
+        "targets": {
+          "browsers": ["last 2 chrome versions"]
+        }
+      }
+    ],
+    [
+      "@babel/preset-react",
+      {
+        "development": true,
+        "runtime": "automatic",
+        "importSource": "react"
+      }
+    ],
+    "@babel/preset-typescript"
+  ],
+  "plugins": [
+    [
+      "react-refresh/babel",
+      {
+        "skipEnvCheck": true
+      }
+    ]
+  ],
+  "sourceType": "unambiguous"
+}

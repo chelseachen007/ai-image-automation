@@ -1,4 +1,5 @@
 import { useAppStore } from '../stores/appStore';
+export { useModelManager } from './useModelManager';
 
 export const useAISources = () => {
   const {

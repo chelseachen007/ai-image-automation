@@ -511,3 +511,8 @@ export const ENGINE_TYPE_OPTIONS = [
   { value: AIEngineType.JIMENG, label: "火山引擎即梦" },
   { value: AIEngineType.CUSTOM, label: "自定义引擎" }
 ]
+
+// 获取引擎配置的便捷函数
+export function getEngine(type: AIEngineType): AIEngineConfig {
+  return AI_ENGINE_CONFIGS[type];
+}

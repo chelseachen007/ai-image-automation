@@ -6,7 +6,8 @@ import { ResponsiveTabs } from './components/ui/ResponsiveTabs';
 import ChatTab from './components/tabs/ChatTab';
 import Text2ImageTab from './components/tabs/Text2ImageTab';
 import Image2VideoTab from './components/tabs/Image2VideoTab';
-import { MessageOutlined, PictureOutlined, VideoCameraOutlined } from '@ant-design/icons';
+import { WorkflowRunner } from './components/WorkflowRunner';
+import { MessageOutlined, PictureOutlined, VideoCameraOutlined, RobotOutlined } from '@ant-design/icons';
 
 const App: React.FC = () => {
   const { platform } = useUI();
@@ -43,6 +44,12 @@ const App: React.FC = () => {
       label: '图生视频',
       icon: <VideoCameraOutlined />,
       children: <Image2VideoTab />,
+    },
+    {
+      key: 'workflow',
+      label: '自动化工作流',
+      icon: <RobotOutlined />,
+      children: <WorkflowRunner />,
     },
   ];
 

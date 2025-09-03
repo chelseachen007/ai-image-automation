@@ -18,15 +18,15 @@ import {
   SendOutlined, 
   UserOutlined, 
   RobotOutlined, 
-  ImageOutlined,
+  PictureOutlined,
   AudioOutlined,
   VideoCameraOutlined,
   SettingOutlined,
   ClearOutlined,
   SaveOutlined,
   CopyOutlined,
-  ThumbsUpOutlined,
-  ThumbsDownOutlined
+  LikeFilled,
+  DislikeFilled
 } from "@ant-design/icons"
 import { useChat, useAISources, useUI } from "../../src/hooks"
 import { modelManager, DEFAULT_MODELS } from "../../src/config/models"
@@ -212,7 +212,7 @@ function ChatTab() {
               checkedChildren="代码"
               unCheckedChildren="代码"
             />
-          </Switch>
+          </Tooltip>
           
           <Button 
             icon={<SaveOutlined />} 
@@ -276,7 +276,7 @@ function ChatTab() {
                   <div className="mt-2 space-y-2">
                     {message.attachments.map((att, i) => (
                       <div key={i} className="flex items-center gap-2">
-                        {att.type === 'image' && <ImageOutlined />}
+                        {att.type === 'image' && <PictureOutlined />}
                         {att.type === 'audio' && <AudioOutlined />}
                         {att.type === 'video' && <VideoCameraOutlined />}
                         <Text className="text-sm">{att.name}</Text>
@@ -306,14 +306,14 @@ function ChatTab() {
                     <Button
                       type="text"
                       size="small"
-                      icon={<ThumbsUpOutlined />}
+                      icon={<LikeFilled />}
                       className={message.feedback === 'good' ? 'text-blue-500' : ''}
                       onClick={() => handleFeedback(message.id, 'good')}
                     />
                     <Button
                       type="text"
                       size="small"
-                      icon={<ThumbsDownOutlined />}
+                      icon={<DislikeFilled />}
                       className={message.feedback === 'bad' ? 'text-red-500' : ''}
                       onClick={() => handleFeedback(message.id, 'bad')}
                     />
@@ -374,7 +374,7 @@ function ChatTab() {
           <Button onClick={clearMessages} disabled={messages.length === 0}>
             清空
           </Button>
-        </Space>
+        </Space.Compact>
         
         {/* 快捷操作 */}
         <Space className="mt-2">
